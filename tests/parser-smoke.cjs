@@ -62,3 +62,60 @@ assert.match(vm.runInContext('buildText()',context),/BCM\/h \(corte: hombre <14 
 assert.equal(context.parseReport('Talla 1,62 m\nBCM 25,6 kg').height,'162');
 assert.equal(context.parseReport('ECM/BCM 1,2\nBCM 25,6 kg').bcm,'25,6');
 console.log('Clinical reference and BCM/height tests passed');
+
+// Entirely synthetic Bodygram layout. The numbers to the right of each row
+// belong to reference bars, not to the patient; later visits are excluded.
+const mockSections = {
+  header:'Sexo: Mujer  Peso: 68.0 kg  Hidratación: 71.1% (TBW/FFM) RZ: 580.80 BMI: 26.6 kg/m²\nAltura: 160.0 cm XC: 580',
+  composition:[
+    'Parametro resultado % Referencias',
+    'Angulo de fase (PhA) 62° 2.7 4.5 8.5',
+    'Agua total (TBW) 320L 47.1% 25.0 42.0',
+    'Agua extracelular (ECW) 144L 45.0% 12.0 40.0',
+    'Agua intracelular 17.6L 55.0% 12.0 40.0',
+    'Masa libre de grasa (FFM) 45.0kg 66.2% 38.2',
+    'Masa grasa (FM) 23.0kg 33.8% 18.0',
+    'Masa celular Metabolicamente activa 22.0kg 48.9% 18.0',
+    '(BCM)',
+    'Masa muscular total (MM) 38.0kg 44.1% 30.0',
+    'Masa del Musculo Esqueletico (MME) 20.0kg 29.4% 19.0',
+    'Masa muscular esqueletica apendicular 18.0kg 16.0',
+    'Tasa metabolica basal (BMR) 1250.0kcal',
+    'Basal Metabolic Rate (BMR Harris 1330.0kcal',
+    'Benedict)',
+    'Gasto energetico diario total(TDEE) 1720.0 kcal',
+    'Na/K 1.0 0.5',
+    'Hiperhidratacion (OH) OL',
+    'ECW / TBW 0.45L 0.7',
+  ].join('\n'),
+  results:[
+    'resultado','62°','32.0 L','14.4 L','17.6 L','45.0 kg','23.0 kg',
+    '22.0 kg','30.0 kg','20.0kg','18.0kg','1250.0kcal','1330.0kcal',
+    '1720.0kcal','1.0','OL','0.45 L',
+  ].join('\n'),
+  indices:[
+    'Parametro resultado Referencias',
+    'Indice de masa corporal (BMI) 26.6 kg/m² 15.0 25.0 60.0',
+    'Indice de masa celular Metabolicamente activa (BCMI) 8.6 kg/m² 2.0 6.4',
+    'Indice de masa grasa 9.0 kg/m² 6.0 18.0',
+    'Indice de masa libre de grasa 17.6 kg/m² 12.0 25.0',
+    'Indice de Masa muscular esqueletica (SMI) 7.8 kg/m² 6.2 7.0',
+  ].join('\n'),
+  extra:'Indice de masa muscular esqueletica apendicular 7.0 kg/m² 4.1 8.4\nAngulo de fase estandarizado (SPA) -0.75 -4.0 0.0',
+};
+const hbo=context.parseBodygramCrops(mockSections);
+assert.equal(hbo.sex,'female');
+const expectedHbo={
+  weight:'68',height:'160',bmi:'26,6',hydration:'71,1',resistance:'580,8',reactance:'58',
+  phase:'6,2',tbw:'32',tbw_pct:'47,1',ecw:'14,4',ecw_pct:'45',icw:'17,6',icw_pct:'55',
+  ffm:'45',ffm_pct:'66,2',fm:'23',fm_pct:'33,8',bcm:'22',mm:'30',smm:'20',asmm:'18',
+  bmr:'1250',bmr_harris:'1330',tdee:'1720',na_k:'1',oh:'0',ecw_tbw:'45',
+  bcmi:'8,6',fmi:'9',ffmi:'17,6',smi:'7,8',asmi:'7',spa:'-0,75',
+};
+for(const [key,value] of Object.entries(expectedHbo))assert.equal(hbo.values[key],value,`HBO ${key}`);
+assert.equal(Object.keys(hbo.values).length,Object.keys(expectedHbo).length);
+assert.equal(context.parseBodygramCrops({...mockSections,composition:'Otros datos 5.0'}),null);
+const uncertain=context.parseBodygramCrops({...mockSections,results:'resultado\nuna lectura incompleta'});
+assert.equal(uncertain.values.mm,undefined,'conflicting measured value must not be copied');
+assert.ok(uncertain.needsReview.includes('mm'));
+console.log('HBO table-column extraction and conservative cross-check tests passed');
