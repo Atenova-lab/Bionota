@@ -35,7 +35,7 @@ const FIELDS = [
   { id:'asmi', cat:'muscle', name:'Índice muscular apendicular', short:'ASMI', unit:'kg/m²', aliases:['asmi','asmm index','appendicular skeletal muscle mass index','indice muscolare appendicolare'], min:0, max:25 },
   { id:'tbw', cat:'water', name:'Agua corporal total', short:'TBW', unit:'L', aliases:['agua corporal total','total body water','acqua corporea totale','tbw'], min:3, max:140 },
   { id:'tbw_pct', cat:'water', name:'Agua corporal total', short:'TBW', unit:'%', aliases:['agua corporal total','total body water','acqua corporea totale','tbw'], min:10, max:95 },
-  { id:'hydration', cat:'water', name:'Hidratación de la masa libre de grasa', short:'Hidratación', unit:'%', aliases:['hidratacion','idratazione','hydration','ffm hydration'], min:40, max:100 },
+  { id:'hydration', cat:'water', name:'Hydragram · hidratación de la masa libre de grasa', short:'Hydragram (TBW/FFM)', unit:'%', aliases:['hydragram','tbw/ffm','tbw / ffm','hidratacion','idratazione','hydration','ffm hydration'], min:40, max:100 },
   { id:'ecw', cat:'water', name:'Agua extracelular', short:'ECW', unit:'L', aliases:['agua extracelular','extracellular water','acqua extracellulare','ecw'], min:0, max:80 },
   { id:'ecw_pct', cat:'water', name:'Agua extracelular', short:'ECW', unit:'%', aliases:['agua extracelular','extracellular water','acqua extracellulare','ecw'], min:0, max:100 },
   { id:'icw', cat:'water', name:'Agua intracelular', short:'ICW', unit:'L', aliases:['agua intracelular','intracellular water','acqua intracellulare','icw'], min:0, max:90 },
@@ -57,18 +57,32 @@ const BUILTINS = [
   { id:'obesity', name:'Obesidad y seguimiento', description:'Medidas para documentar cambios ponderales y de compartimentos.', fields:['weight','height','bmi','waist','fm','fm_pct','fmi','ffm','ffmi','phase','tbw'], format:'compact' },
 ];
 const STORE_KEY = 'bionota_templates_v1';
-const state = { values:{}, derivedFields:new Set(), selected:new Set(BUILTINS[0].fields), templateId:'general', format:'compact', includeCutoffs:true, sex:'all', custom:readTemplates(), rawText:'', source:'', file:null, fileUrl:null, pdfBytes:null, demo:false, verified:false, busy:false, editingTemplateId:null };
+const OVERRIDES_KEY = 'bionota_builtin_overrides_v1';
+const state = { values:{}, derivedFields:new Set(), selected:new Set(BUILTINS[0].fields), templateId:'general', format:'compact', includeCutoffs:true, sex:'all', custom:readTemplates(), overrides:readOverrides(), rawText:'', source:'', file:null, fileUrl:null, pdfBytes:null, demo:false, verified:false, busy:false, editingTemplateId:null, templateDraftFields:new Set(), templateSearch:'' };
 
 const $ = id => document.getElementById(id);
 const fieldById = id => FIELDS.find(f => f.id === id);
-const allTemplates = () => [...BUILTINS, ...state.custom];
+const allTemplates = () => [...BUILTINS.map(t=>state.overrides[t.id]?{...t,...state.overrides[t.id]}:t), ...state.custom];
 const escapeHtml = s => String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 function readTemplates() {
   try { const data=JSON.parse(localStorage.getItem(STORE_KEY)||'[]'); return Array.isArray(data)?data.filter(t=>t&&typeof t.name==='string'&&Array.isArray(t.fields)).slice(0,50).map(t=>({...t,fields:t.fields.filter(id=>FIELDS.some(f=>f.id===id))})):[]; }
   catch { return []; }
 }
+function readOverrides(){
+  try{
+    const input=JSON.parse(localStorage.getItem(OVERRIDES_KEY)||'{}');
+    if(!input||typeof input!=='object'||Array.isArray(input))return {};
+    const overrides={};
+    for(const t of BUILTINS){const saved=input[t.id];if(!saved||!Array.isArray(saved.fields))continue;
+      const fields=saved.fields.filter(id=>FIELDS.some(f=>f.id===id));
+      if(fields.length)overrides[t.id]={name:typeof saved.name==='string'?saved.name.slice(0,60):t.name,description:typeof saved.description==='string'?saved.description.slice(0,120):t.description,fields,format:t.format};
+    }
+    return overrides;
+  }catch{return {};}
+}
 function persistTemplates(){try{localStorage.setItem(STORE_KEY,JSON.stringify(state.custom));return true;}catch{return false;}}
+function persistOverrides(){try{localStorage.setItem(OVERRIDES_KEY,JSON.stringify(state.overrides));return true;}catch{return false;}}
 function formatDecimal(input){return String(input).trim().replace(/\s/g,'').replace(/\.(?=\d{3}(?:[.,]|$))/g,'').replace('.',',');}
 function toast(message){const el=$('toast');el.textContent=message;el.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.classList.remove('show'),3500);}
 function showView(id){document.querySelectorAll('.view').forEach(el=>el.classList.toggle('active-view',el.id===id+'View'));document.querySelectorAll('[data-view]').forEach(el=>el.classList.toggle('active',el.dataset.view===id));$('breadcrumbTitle').textContent={workspace:'Conversor PDF',templates:'Mis plantillas',guide:'Cómo funciona'}[id];window.scrollTo({top:0,behavior:'smooth'});if(id==='templates')renderTemplates();}
@@ -136,14 +150,54 @@ function renderPreview(){
   document.querySelectorAll('.step').forEach((s,i)=>s.classList.toggle('active',i===0?true:i===1?!!Object.keys(state.values).length:!!note));
 }
 function renderTemplates(){
-  $('templateGrid').innerHTML=allTemplates().map(t=>{const custom=!BUILTINS.some(b=>b.id===t.id);return `<article class="template-card"><div class="template-card-top"><div class="template-card-icon"><svg><use href="#i-layers"/></svg></div><span class="card-tag ${custom?'custom':''}">${custom?'PERSONALIZADA':'PREDEFINIDA'}</span></div><h3>${escapeHtml(t.name)}</h3><p>${escapeHtml(t.description||'Configuración personalizada de parámetros clínicos.')}</p><div class="template-card-bottom"><button class="template-use" data-use="${escapeHtml(t.id)}">Usar este modelo →</button>${custom?`<button class="template-delete" data-edit="${escapeHtml(t.id)}" aria-label="Editar plantilla ${escapeHtml(t.name)}" title="Editar modelo"><svg><use href="#i-settings"/></svg></button><button class="template-delete" data-delete="${escapeHtml(t.id)}" aria-label="Eliminar plantilla ${escapeHtml(t.name)}" title="Eliminar modelo"><svg><use href="#i-trash"/></svg></button>`:''}<span class="template-count">${t.fields.length} parámetros</span></div></article>`;}).join('');
+  $('templateGrid').innerHTML=allTemplates().map(t=>{const builtin=BUILTINS.some(b=>b.id===t.id);const customized=builtin&&!!state.overrides[t.id];return `<article class="template-card"><div class="template-card-top"><div class="template-card-icon"><svg><use href="#i-layers"/></svg></div><span class="card-tag ${!builtin||customized?'custom':''}">${!builtin?'PERSONALIZADA':customized?'AJUSTADA':'PREDEFINIDA'}</span></div><h3>${escapeHtml(t.name)}</h3><p>${escapeHtml(t.description||'Configuración personalizada de parámetros clínicos.')}</p><div class="template-card-bottom"><button class="template-use" data-use="${escapeHtml(t.id)}">Usar modelo →</button><span class="template-count">${t.fields.length} parámetros</span></div><div class="template-card-tools"><button class="template-edit" data-edit="${escapeHtml(t.id)}"><svg><use href="#i-settings"/></svg> Editar parámetros</button>${customized?`<button class="template-rest" data-restore="${escapeHtml(t.id)}" title="Recuperar parámetros originales">Restaurar</button>`:''}${!builtin?`<button class="template-delete" data-delete="${escapeHtml(t.id)}" aria-label="Eliminar plantilla ${escapeHtml(t.name)}" title="Eliminar modelo"><svg><use href="#i-trash"/></svg></button>`:''}</div></article>`;}).join('');
 }
-function openModal(id=null){state.editingTemplateId=id;const t=id?state.custom.find(c=>c.id===id):null;if(t){state.selected=new Set(t.fields);renderFields();renderPreview();}$('modalTitle').textContent=t?'Editar plantilla':'Nueva plantilla';$('templateName').value=t?.name||'';$('templateDescription').value=t?.description||'';$('templateModal').hidden=false;$('templateName').focus();}
-function closeModal(){$('templateModal').hidden=true;state.editingTemplateId=null;}
-function saveTemplate(){const name=$('templateName').value.trim();if(!name){toast('Escribe un nombre para tu plantilla.');$('templateName').focus();return;}if(!state.selected.size){toast('Selecciona al menos un parámetro.');return;}
-  if(state.editingTemplateId){const t=state.custom.find(c=>c.id===state.editingTemplateId);if(t){t.name=name;t.description=$('templateDescription').value.trim();t.fields=[...state.selected];t.format=state.format;state.templateId=t.id;}}
-  else {if(state.custom.length>=50){toast('Has alcanzado el límite de 50 plantillas.');return;}const id='custom_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7);state.custom.push({id,name,description:$('templateDescription').value.trim(),fields:[...state.selected],format:state.format});state.templateId=id;}
-  const saved=persistTemplates();closeModal();renderTemplateSelect();renderTemplates();toast(saved?'Plantilla guardada en este navegador.':'No se ha podido guardar en este navegador.');}
+function renderModalFields(){
+  const search=state.templateSearch.trim().toLocaleLowerCase('es');let html='';
+  for(const category of CATEGORIES){const list=FIELDS.filter(f=>f.cat===category.id&&(!search||`${f.name} ${f.short||''} ${f.unit}`.toLocaleLowerCase('es').includes(search)));if(!list.length)continue;
+    html+=`<div class="template-field-group"><div class="template-field-group-heading"><b>${escapeHtml(category.name)}</b><span>${list.filter(f=>state.templateDraftFields.has(f.id)).length} de ${list.length}</span></div>`;
+    for(const f of list){html+=`<label class="template-field-option"><input type="checkbox" data-template-field="${f.id}" ${state.templateDraftFields.has(f.id)?'checked':''}/><span>${escapeHtml(f.short||f.name)}<small>${escapeHtml(f.short?f.name:f.unit)}</small></span><span class="template-field-unit">${escapeHtml(f.unit)}</span></label>`;}
+    html+='</div>';
+  }
+  $('templateFields').innerHTML=html||'<p class="template-empty">No hay parámetros que coincidan con la búsqueda.</p>';
+  $('templateSelectedCount').textContent=`${state.templateDraftFields.size} de ${FIELDS.length} parámetros incluidos`;
+  $('templateSelectAll').textContent=search?'Marcar resultados':'Marcar todos';
+  $('templateClearAll').textContent=search?'Desmarcar resultados':'Desmarcar todos';
+}
+function refreshModalFields(){const list=$('templateFields');const scrollTop=list.scrollTop;renderModalFields();list.scrollTop=scrollTop;}
+function openModal(id=null){
+  const t=id?allTemplates().find(c=>c.id===id):null;
+  state.editingTemplateId=t?t.id:null;
+  state.templateDraftFields=new Set(t?t.fields:state.selected);
+  state.templateSearch='';$('templateFieldSearch').value='';
+  $('modalTitle').textContent=t?'Editar parámetros de la plantilla':'Nueva plantilla';
+  $('modalDescription').textContent=t?'Marca los parámetros que incluirá este modelo. Los cambios se guardarán solo al confirmar.':'Marca los parámetros que quieras guardar para reutilizarlos en otras consultas.';
+  $('templateName').value=t?.name||'';$('templateDescription').value=t?.description||'';
+  $('confirmTemplate').innerHTML=t?'<svg><use href="#i-check"/></svg> Guardar cambios':'<svg><use href="#i-check"/></svg> Crear plantilla';
+  renderModalFields();$('templateModal').hidden=false;$('templateName').focus();
+}
+function closeModal(){$('templateModal').hidden=true;state.editingTemplateId=null;state.templateDraftFields=new Set();}
+function saveTemplate(){
+  const name=$('templateName').value.trim();if(!name){toast('Escribe un nombre para tu plantilla.');$('templateName').focus();return;}
+  if(!state.templateDraftFields.size){toast('Selecciona al menos un parámetro para la plantilla.');return;}
+  const fields=FIELDS.filter(f=>state.templateDraftFields.has(f.id)).map(f=>f.id);
+  const description=$('templateDescription').value.trim();let id=state.editingTemplateId;const isNew=!id;let saved=false;
+  if(id&&BUILTINS.some(t=>t.id===id)){
+    state.overrides[id]={name,description,fields,format:BUILTINS.find(t=>t.id===id).format};
+    saved=persistOverrides();
+  }else if(id){
+    const t=state.custom.find(c=>c.id===id);if(!t)return;
+    t.name=name;t.description=description;t.fields=fields;
+    saved=persistTemplates();
+  }else{
+    if(state.custom.length>=50){toast('Has alcanzado el límite de 50 plantillas.');return;}
+    id='custom_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7);
+    state.custom.push({id,name,description,fields,format:state.format});
+    saved=persistTemplates();
+  }
+  closeModal();if(isNew||state.templateId===id)applyTemplate(id);
+  renderTemplateSelect();renderTemplates();toast(saved?'Plantilla guardada. Ya puedes usarla.':'No se ha podido guardar en este navegador.');
+}
 
 function norm(value){return String(value).normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[\u00a0\u202f]/g,' ').toLowerCase().replace(/\s+/g,' ').trim();}
 function aliasMatcher(alias){return new RegExp('(^|[^a-z0-9])'+norm(alias).replace(/[.*+?^${}()|[\]\\]/g,'\\$&').replace(/ /g,'\\s+')+'(?=$|[^a-z0-9])','i');}
@@ -308,7 +362,7 @@ function parseBodygramCrops({header='',composition='',results='',indices='',extr
   const headSpecs=[
     ['weight',/\bpeso\s*:?\s*([-+]?\d{1,4}(?:[.,]\d{1,2})?)\s*kg/],
     ['height',/\baltura\s*:?\s*([-+]?\d{1,4}(?:[.,]\d{1,2})?)\s*cm/],
-    ['hydration',/\bhidrataci[oe]n\s*:?\s*([-+]?\d{1,3}(?:[.,]\d{1,2})?)\s*%/],
+    ['hydration',/\b(?:hidrataci[oe]n|hydragram(?:\s*\(?(?:tbw\s*\/\s*ffm)\)?)?)\s*:?\s*([-+]?\d{1,3}(?:[.,]\d{1,2})?)\s*%/],
     ['resistance',/\brz\s*:?\s*([-+]?\d{2,4}(?:[.,]\d{1,2})?)/],
     ['reactance',/\bxc\s*:?\s*([-+]?\d{1,4}(?:[.,]\d{1,2})?)/],
     ['bmi',/\bbmi\s*:?\s*([-+]?\d{1,3}(?:[.,]\d{1,2})?)/],
@@ -501,7 +555,11 @@ for(const type of ['dragleave','drop'])$('dropzone').addEventListener(type,e=>{e
 $('dropzone').addEventListener('drop',e=>{if(e.dataTransfer.files[0])loadPdf(e.dataTransfer.files[0]);});
 $('removeFile').addEventListener('click',clearFile);$('viewOriginal').addEventListener('click',()=>{if(state.fileUrl)window.open(state.fileUrl,'_blank','noopener');});$('loadDemo').addEventListener('click',loadDemo);$('forceOcr').addEventListener('click',()=>runOcr());
 $('saveTemplateFromSelection').addEventListener('click',()=>openModal());$('newTemplate').addEventListener('click',()=>openModal());
-$('templateGrid').addEventListener('click',e=>{const use=e.target.closest('[data-use]');if(use){applyTemplate(use.dataset.use);showView('workspace');return;}const edit=e.target.closest('[data-edit]');if(edit){openModal(edit.dataset.edit);return;}const del=e.target.closest('[data-delete]');if(del){const t=state.custom.find(x=>x.id===del.dataset.delete);if(!t||!confirm(`¿Eliminar la plantilla «${t.name}»?`))return;state.custom=state.custom.filter(x=>x.id!==t.id);if(state.templateId===t.id)applyTemplate('general');persistTemplates();renderTemplateSelect();renderTemplates();toast('Plantilla eliminada.');}});
+$('templateGrid').addEventListener('click',e=>{const use=e.target.closest('[data-use]');if(use){applyTemplate(use.dataset.use);showView('workspace');return;}const edit=e.target.closest('[data-edit]');if(edit){openModal(edit.dataset.edit);return;}const rest=e.target.closest('[data-restore]');if(rest){const base=BUILTINS.find(t=>t.id===rest.dataset.restore);if(!base||!confirm(`¿Restaurar los parámetros originales del modelo «${base.name}»?`))return;delete state.overrides[base.id];persistOverrides();if(state.templateId===base.id)applyTemplate(base.id);renderTemplateSelect();renderTemplates();toast('Modelo restaurado a sus valores originales.');return;}const del=e.target.closest('[data-delete]');if(del){const t=state.custom.find(x=>x.id===del.dataset.delete);if(!t||!confirm(`¿Eliminar la plantilla «${t.name}»?`))return;state.custom=state.custom.filter(x=>x.id!==t.id);if(state.templateId===t.id)applyTemplate('general');persistTemplates();renderTemplateSelect();renderTemplates();toast('Plantilla eliminada.');}});
+$('templateFieldSearch').addEventListener('input',e=>{state.templateSearch=e.target.value;renderModalFields();});
+$('templateFields').addEventListener('change',e=>{const id=e.target.dataset.templateField;if(!id)return;if(e.target.checked)state.templateDraftFields.add(id);else state.templateDraftFields.delete(id);refreshModalFields();});
+$('templateSelectAll').addEventListener('click',()=>{const filter=state.templateSearch.toLocaleLowerCase('es').trim();for(const f of FIELDS){if(!filter||`${f.name} ${f.short||''} ${f.unit}`.toLocaleLowerCase('es').includes(filter))state.templateDraftFields.add(f.id);}refreshModalFields();});
+$('templateClearAll').addEventListener('click',()=>{const filter=state.templateSearch.toLocaleLowerCase('es').trim();for(const f of FIELDS){if(!filter||`${f.name} ${f.short||''} ${f.unit}`.toLocaleLowerCase('es').includes(filter))state.templateDraftFields.delete(f.id);}refreshModalFields();});
 $('closeModal').addEventListener('click',closeModal);$('cancelModal').addEventListener('click',closeModal);$('templateModal').addEventListener('click',e=>{if(e.target===$('templateModal'))closeModal();});$('confirmTemplate').addEventListener('click',saveTemplate);document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('templateModal').hidden)closeModal();});
 $('currentDate').textContent=new Intl.DateTimeFormat('es-ES',{day:'numeric',month:'short',year:'numeric'}).format(new Date());
 renderTemplateSelect();renderFields();renderFormats();renderPreview();
