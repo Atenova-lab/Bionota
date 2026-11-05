@@ -35,7 +35,7 @@ for (const key of ['tbw_pct','ecw_pct','icw_pct','ffm_pct']) assert.equal(parsed
 assert.equal(Object.keys(parsed).length, Object.keys(expected).length);
 console.log('Parser smoke test passed:', Object.keys(parsed).length, 'fields');
 
-vm.runInContext("state.values = { bmi:'26,1', bcmi:'11,2', ffm:'47,7', fm:'20,7' }; state.selected = new Set(['bmi','bcmi','ffm','fm']); state.format = 'compact';", context);
+vm.runInContext("state.values = { bmi:'26,1', bcmi:'11,2', ffm:'47,7', fm:'20,7' }; state.selected = new Set(['bmi','bcmi','ffm','fm']); state.format = 'compact'; state.includeCutoffs = false;", context);
 const lines = vm.runInContext('buildText()', context).split('\n');
 assert.deepEqual(Array.from(lines), ['IMC: 26,1 kg/m²','FM: 20,7 kg','FFM: 47,7 kg','BCMI: 11,2 kg/m²']);
 vm.runInContext("state.format = 'sections';", context);
@@ -43,3 +43,22 @@ const grouped = vm.runInContext('buildText()', context);
 assert.match(grouped, /ANTROPOMETRÍA\nIMC: 26,1 kg\/m²/);
 assert.match(grouped, /FM: 20,7 kg\nFFM: 47,7 kg\nBCMI: 11,2 kg\/m²/);
 console.log('One-parameter-per-line formats passed');
+
+vm.runInContext("state.values = { bmi:'26,1', height:'162', bcm:'25,6', ffmi:'18,2', phase:'6,0', smi:'8,6', hydration:'73,0' }; state.selected = new Set(['bmi','bcm','ffmi','phase','smi','hydration']); state.format = 'compact'; state.includeCutoffs = true; state.sex = 'female';",context);
+const note=vm.runInContext('buildText()',context);
+assert.match(note,/IMC \(corte: bajo IMC <20 \(<70 años\) \/ <22 \(≥70 años\); obesidad >30\): 26,1 kg\/m²/);
+assert.match(note,/BCM\/h \(corte: mujer <10 kg\/m\): 15,8 kg\/m/);
+assert.match(note,/FFMI \(corte: mujer <15 kg\/m²\): 18,2 kg\/m²/);
+assert.match(note,/SMI \(corte: mujer <5,7 kg\/m²\): 8,6 kg\/m²/);
+assert.match(note,/PhA \(corte: PhA <3,95°\): 6,0 °/);
+assert.match(note,/Hidratación \(corte: >73,5 %\): 73,0 %/);
+vm.runInContext("state.values.height='1,62';",context);
+assert.equal(vm.runInContext('bcmByHeight(state.values)',context),'15,8');
+vm.runInContext("state.values.height='';",context);
+assert.equal(vm.runInContext('bcmByHeight(state.values)',context),null);
+assert.doesNotMatch(vm.runInContext('buildText()',context),/BCM\/h/);
+vm.runInContext("state.values.height='162'; state.sex='male';",context);
+assert.match(vm.runInContext('buildText()',context),/BCM\/h \(corte: hombre <14 kg\/m\)/);
+assert.equal(context.parseReport('Talla 1,62 m\nBCM 25,6 kg').height,'162');
+assert.equal(context.parseReport('ECM/BCM 1,2\nBCM 25,6 kg').bcm,'25,6');
+console.log('Clinical reference and BCM/height tests passed');
