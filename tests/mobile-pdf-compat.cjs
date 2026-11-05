@@ -35,5 +35,5 @@ for (const bundle of ['pdf.min.mjs', 'pdf.worker.min.mjs']) {
 
 const serviceWorker = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
 assert.match(serviceWorker, /\.\/vendor\/map-compat\.mjs/, 'offline shell must cache the shim');
-assert.match(serviceWorker, /bionota-static-v4/, 'installed apps must refresh the cached PDF.js modules');
+assert.match(serviceWorker, /bionota-static-v(?:[4-9]|[1-9]\d+)/, 'installed apps must refresh the cached PDF.js modules');
 console.log('Android-compatible PDF.js main thread, worker and offline shell checks passed');

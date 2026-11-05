@@ -46,7 +46,8 @@ console.log('One-parameter-per-line formats passed');
 
 vm.runInContext("state.values = { bmi:'26,1', height:'162', bcm:'25,6', ffmi:'18,2', phase:'6,0', smi:'8,6', hydration:'73,0' }; state.selected = new Set(['bmi','bcm','ffmi','phase','smi','hydration']); state.format = 'compact'; state.includeCutoffs = true; state.sex = 'female';",context);
 const note=vm.runInContext('buildText()',context);
-assert.match(note,/IMC \(corte: bajo IMC <20 \(<70 años\) \/ <22 \(≥70 años\); obesidad >30\): 26,1 kg\/m²/);
+assert.match(note,/IMC: 26,1 kg\/m²/);
+assert.doesNotMatch(note,/bajo IMC|obesidad >30/);
 assert.match(note,/BCM\/h \(corte: mujer <10 kg\/m\): 15,8 kg\/m/);
 assert.match(note,/FFMI \(corte: mujer <15 kg\/m²\): 18,2 kg\/m²/);
 assert.match(note,/SMI \(corte: mujer <5,7 kg\/m²\): 8,6 kg\/m²/);

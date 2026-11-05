@@ -58,7 +58,7 @@ const BUILTINS = [
 ];
 const STORE_KEY = 'bionota_templates_v1';
 const OVERRIDES_KEY = 'bionota_builtin_overrides_v1';
-const state = { values:{}, derivedFields:new Set(), selected:new Set(BUILTINS[0].fields), templateId:'general', format:'compact', includeCutoffs:true, sex:'all', custom:readTemplates(), overrides:readOverrides(), rawText:'', source:'', file:null, fileUrl:null, pdfBytes:null, demo:false, verified:false, busy:false, editingTemplateId:null, templateDraftFields:new Set(), templateSearch:'' };
+const state = { values:{}, derivedFields:new Set(), selected:new Set(BUILTINS[0].fields), templateId:'general', format:'compact', noteMode:'current', measurements:[], editingMeasurementId:null, measurementSequence:0, includeCutoffs:true, sex:'all', custom:readTemplates(), overrides:readOverrides(), rawText:'', source:'', file:null, fileUrl:null, pdfBytes:null, demo:false, verified:false, busy:false, editingTemplateId:null, templateDraftFields:new Set(), templateSearch:'' };
 
 const $ = id => document.getElementById(id);
 const fieldById = id => FIELDS.find(f => f.id === id);
@@ -87,7 +87,7 @@ function formatDecimal(input){return String(input).trim().replace(/\s/g,'').repl
 function toast(message){const el=$('toast');el.textContent=message;el.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.classList.remove('show'),3500);}
 function showView(id){document.querySelectorAll('.view').forEach(el=>el.classList.toggle('active-view',el.id===id+'View'));document.querySelectorAll('[data-view]').forEach(el=>el.classList.toggle('active',el.dataset.view===id));$('breadcrumbTitle').textContent={workspace:'Conversor PDF',templates:'Mis plantillas',guide:'Cómo funciona'}[id];window.scrollTo({top:0,behavior:'smooth'});if(id==='templates')renderTemplates();}
 function showStatus(message,kind='neutral'){$('processStatus').className='status-note'+(kind==='neutral'?'':' '+kind);$('processStatus').querySelector('span:last-child').textContent=message;}
-function setBusy(flag){state.busy=flag;$('forceOcr').disabled=flag||!state.pdfBytes;$('loadDemo').disabled=flag;$('dropzone').style.pointerEvents=flag?'none':'auto';}
+function setBusy(flag){state.busy=flag;$('forceOcr').disabled=flag||!state.pdfBytes;$('loadDemo').disabled=flag;$('dropzone').style.pointerEvents=flag?'none':'auto';renderMeasurements();}
 function resetVerification(){state.verified=false;$('verifiedCheck').checked=false;}
 function setValues(values,source,{replace=true,derived=[]}={}) {if(replace)state.values={};for(const [id,v] of Object.entries(values))state.values[id]=v;state.source=source;state.derivedFields=new Set(derived);resetVerification();renderFields();renderPreview();}
 function renderFields(){
@@ -112,7 +112,7 @@ function bcmByHeight(values){const bcm=numberFromInput(values.bcm);const metres=
 function sexCutoffs(male,female,sex){return sex==='male'?`hombre <${male}`:sex==='female'?`mujer <${female}`:`hombre <${male} / mujer <${female}`;}
 function referenceFor(id,sex){
   switch(id){
-    case 'bmi': return 'bajo IMC <20 (<70 años) / <22 (≥70 años); obesidad >30';
+    case 'bmi': return null;
     case 'waist': return sex==='male'?'hombre ≥102 cm':sex==='female'?'mujer ≥88 cm':'hombre ≥102 cm / mujer ≥88 cm';
     case 'calf': return '<31 cm';
     case 'phase': return 'PhA <3,95°';
@@ -132,22 +132,86 @@ function humanField(f,v){
   const cutoff=state.includeCutoffs?referenceFor(f.id,state.sex):null;
   return `${label}${cutoff?` (corte: ${cutoff})`:''}: ${converted}${unit?' '+unit:''}`;
 }
+// Measurements live in memory only. Dates are entered explicitly, never guessed from a PDF.
+function validMeasurementDate(value){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(value))return false;
+  const date=new Date(value+'T12:00:00Z');
+  return Number.isFinite(date.getTime())&&date.toISOString().slice(0,10)===value;
+}
+function sortedMeasurements(){return [...state.measurements].sort((a,b)=>a.date.localeCompare(b.date));}
+function hasValue(values,id){return values[id]!==undefined&&values[id]!==null&&String(values[id]).trim()!=='';}
+function measurementValue(f,record){
+  if(!hasValue(record.values,f.id))return null;
+  return f.id==='bcm'?bcmByHeight(record.values):formatDecimal(record.values[f.id]);
+}
+function evolutionField(f){
+  const records=sortedMeasurements().filter(r=>hasValue(r.values,f.id));
+  const values=records.map(r=>measurementValue(f,r)).filter(v=>v!==null);
+  if(!values.length)return null;
+  const label=f.id==='bcm'?'BCM/h':(f.short||f.name);
+  const derived=records.some(r=>r.derived.includes(f.id))?' (incluye calculados)':'';
+  const unit=f.id==='bcm'?'kg/m':f.unit;
+  const cutoff=state.includeCutoffs?referenceFor(f.id,state.sex):null;
+  return `${label}${derived}: ${values.join(' → ')}${unit?' '+unit:''}${cutoff?` (corte: ${cutoff})`:''}`;
+}
+function noteHasDemo(){return state.noteMode==='evolution'?state.measurements.some(r=>r.demo):state.demo;}
+function noteMissingHeight(){
+  if(!state.selected.has('bcm'))return false;
+  const records=state.noteMode==='evolution'?state.measurements:[{values:state.values}];
+  return records.some(r=>hasValue(r.values,'bcm')&&bcmByHeight(r.values)===null);
+}
 function buildText(){
   const groups=[];let num=0;
-  for(const c of CATEGORIES){const valid=FIELDS.filter(f=>f.cat===c.id&&state.selected.has(f.id)&&state.values[f.id]!==undefined&&String(state.values[f.id]).trim()!=='');const lines=valid.map(f=>humanField(f,state.values[f.id])).filter(Boolean);if(!lines.length)continue;num+=lines.length;groups.push({name:c.name,lines});}
+  for(const c of CATEGORIES){
+    const valid=FIELDS.filter(f=>f.cat===c.id&&state.selected.has(f.id)&&(state.noteMode==='evolution'?state.measurements.some(r=>hasValue(r.values,f.id)):hasValue(state.values,f.id)));
+    const lines=valid.map(f=>state.noteMode==='evolution'?evolutionField(f):humanField(f,state.values[f.id])).filter(Boolean);
+    if(!lines.length)continue;num+=lines.length;groups.push({name:c.name,lines});
+  }
   if(!num)return '';
   const body=state.format==='sections'
     ? groups.map(g=>`${g.name.toUpperCase()}\n${g.lines.join('\n')}`).join('\n\n')
     : groups.flatMap(g=>g.lines).join('\n');
-  return (state.demo?'[EJEMPLO FICTICIO · NO INCORPORAR A HISTORIA CLÍNICA]\n':'')+body;
+  return (noteHasDemo()?'[EJEMPLO FICTICIO · NO INCORPORAR A HISTORIA CLÍNICA]\n':'')+body;
+}
+function renderMeasurements(){
+  $('measurementCount').textContent=`${state.measurements.length} visita${state.measurements.length===1?'':'s'}`;
+  $('measurementList').innerHTML=sortedMeasurements().map(r=>`<li><div><b>${new Intl.DateTimeFormat('es-ES',{day:'2-digit',month:'short',year:'numeric'}).format(new Date(r.date+'T12:00:00'))}</b><span>${Object.keys(r.values).filter(id=>hasValue(r.values,id)).length} parámetros${r.demo?' · ficticios':''}${r.id===state.editingMeasurementId?' · editando':''}</span></div><button class="small-outline" type="button" data-edit-measurement="${r.id}" aria-label="Editar medición del ${escapeHtml(r.date)}">Editar</button><button class="mini-button" type="button" data-remove-measurement="${r.id}" aria-label="Eliminar medición del ${escapeHtml(r.date)}"><svg><use href="#i-trash"/></svg></button></li>`).join('');
+  $('clearMeasurements').disabled=!state.measurements.length||state.busy;
+  $('addMeasurement').disabled=state.busy||!Object.keys(state.values).some(id=>hasValue(state.values,id));
+  $('addMeasurement').innerHTML=`<svg><use href="#i-${state.editingMeasurementId?'check':'plus'}"/></svg> ${state.editingMeasurementId?'Actualizar medición':'Añadir a evolución'}`;
+  $('measurementDate').disabled=state.busy;
+  $('measurementHint').textContent=state.editingMeasurementId?'Corrige los valores o la fecha y pulsa «Actualizar medición».':state.measurements.length?'Carga el siguiente informe o introduce otra medición y asigna su fecha.':'Carga un PDF o introduce los valores y asigna su fecha.';
+  document.querySelectorAll('[data-note-mode]').forEach(b=>{const active=b.dataset.noteMode===state.noteMode;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));});
+  $('evolutionCaption').hidden=state.noteMode!=='evolution';
+  if(state.noteMode==='evolution')$('evolutionCaption').textContent=state.measurements.length?`Orden cronológico: ${sortedMeasurements().map(r=>r.date.split('-').reverse().join('/')).join(' → ')}. Cada parámetro muestra solo sus valores disponibles.`:'Añade al menos una medición con fecha para generar el evolutivo.';
+}
+function addMeasurement(){
+  if(state.busy)return;
+  const date=$('measurementDate').value;
+  if(!validMeasurementDate(date)){toast('Indica una fecha válida para esta medición.');$('measurementDate').focus();return;}
+  const values=Object.fromEntries(Object.entries(state.values).filter(([id])=>hasValue(state.values,id)));
+  if(!Object.keys(values).length){toast('Introduce al menos un valor para añadir la medición.');return;}
+  if(state.measurements.some(r=>r.date===date&&r.id!==state.editingMeasurementId)){toast('Ya hay una medición en esa fecha. Usa «Editar» para corregirla.');return;}
+  const record={id:state.editingMeasurementId||String(++state.measurementSequence),date,values:{...values},derived:[...state.derivedFields],sex:state.sex,demo:state.demo};
+  const index=state.measurements.findIndex(r=>r.id===record.id);
+  if(index<0)state.measurements.push(record);else state.measurements[index]=record;
+  clearFile();state.noteMode='evolution';renderPreview();toast('Medición añadida a la evolución.');
+}
+function editMeasurement(id){
+  if(state.busy)return;
+  const record=state.measurements.find(r=>r.id===id);if(!record)return;
+  clearFile();state.editingMeasurementId=id;state.demo=record.demo;state.sex=record.sex;$('sexSelect').value=record.sex;$('measurementDate').value=record.date;
+  setValues({...record.values},'measurement',{derived:record.derived});
+  $('measurementDate').focus();
 }
 function renderPreview(){
-  const note=buildText();const preview=$('previewContent');preview.textContent=note||'Todavía no hay datos disponibles para los parámetros seleccionados. Carga un PDF, corrige los valores o prueba el ejemplo ficticio.';preview.classList.toggle('has-content',!!note);$('previewCharCount').textContent=`${note.length} caracteres`;
-  const missingHeight=state.selected.has('bcm')&&String(state.values.bcm??'').trim()!==''&&bcmByHeight(state.values)===null;
+  const note=buildText();const preview=$('previewContent');preview.textContent=note||(state.noteMode==='evolution'?'Añade mediciones por fecha para crear la nota evolutiva.':'Todavía no hay datos disponibles para los parámetros seleccionados. Carga un PDF, corrige los valores o prueba el ejemplo ficticio.');preview.classList.toggle('has-content',!!note);$('previewCharCount').textContent=`${note.length} caracteres`;
+  const missingHeight=noteMissingHeight();
   $('calcWarning').hidden=!missingHeight;
-  $('copyButton').disabled=!note||!state.verified||state.demo||state.busy||missingHeight;
-  $('resultDisclaimer').textContent=state.demo?'Los datos mostrados son ficticios. Para copiar, carga un informe real y verifica sus valores.':'No se generan diagnósticos ni interpretaciones automáticas.';
+  $('copyButton').disabled=!note||!state.verified||noteHasDemo()||state.busy||missingHeight;
+  $('resultDisclaimer').textContent=noteHasDemo()?'Los datos mostrados son ficticios. Para copiar, carga un informe real y verifica sus valores.':'No se generan diagnósticos ni interpretaciones automáticas.';
   document.querySelectorAll('.step').forEach((s,i)=>s.classList.toggle('active',i===0?true:i===1?!!Object.keys(state.values).length:!!note));
+  renderMeasurements();
 }
 function renderTemplates(){
   $('templateGrid').innerHTML=allTemplates().map(t=>{const builtin=BUILTINS.some(b=>b.id===t.id);const customized=builtin&&!!state.overrides[t.id];return `<article class="template-card"><div class="template-card-top"><div class="template-card-icon"><svg><use href="#i-layers"/></svg></div><span class="card-tag ${!builtin||customized?'custom':''}">${!builtin?'PERSONALIZADA':customized?'AJUSTADA':'PREDEFINIDA'}</span></div><h3>${escapeHtml(t.name)}</h3><p>${escapeHtml(t.description||'Configuración personalizada de parámetros clínicos.')}</p><div class="template-card-bottom"><button class="template-use" data-use="${escapeHtml(t.id)}">Usar modelo →</button><span class="template-count">${t.fields.length} parámetros</span></div><div class="template-card-tools"><button class="template-edit" data-edit="${escapeHtml(t.id)}"><svg><use href="#i-settings"/></svg> Editar parámetros</button>${customized?`<button class="template-rest" data-restore="${escapeHtml(t.id)}" title="Recuperar parámetros originales">Restaurar</button>`:''}${!builtin?`<button class="template-delete" data-delete="${escapeHtml(t.id)}" aria-label="Eliminar plantilla ${escapeHtml(t.name)}" title="Eliminar modelo"><svg><use href="#i-trash"/></svg></button>`:''}</div></article>`;}).join('');
@@ -488,7 +552,7 @@ async function recognizeBodygram(doc,worker){
 async function loadPdf(file){
   if(!file||(!/\.pdf$/i.test(file.name)&&file.type!=='application/pdf')){toast('Selecciona un archivo PDF.');return;}
   if(file.size>25*1024*1024){toast('El PDF supera los 25 MB permitidos.');return;}
-  setBusy(true);state.sex='all';$('sexSelect').value='all';if(state.fileUrl)URL.revokeObjectURL(state.fileUrl);state.file=file;state.fileUrl=URL.createObjectURL(file);state.demo=false;state.pdfBytes=null;state.rawText='';setValues({},'');$('fileSummary').hidden=false;$('fileName').textContent=file.name;$('fileInfo').textContent=`${(file.size/1024/1024).toFixed(2).replace('.',',')} MB · abriendo...`;
+  state.editingMeasurementId=null;$('measurementDate').value='';setBusy(true);state.sex='all';$('sexSelect').value='all';if(state.fileUrl)URL.revokeObjectURL(state.fileUrl);state.file=file;state.fileUrl=URL.createObjectURL(file);state.demo=false;state.pdfBytes=null;state.rawText='';setValues({},'');$('fileSummary').hidden=false;$('fileName').textContent=file.name;$('fileInfo').textContent=`${(file.size/1024/1024).toFixed(2).replace('.',',')} MB · abriendo...`;
   try{
     showStatus('Abriendo PDF y buscando texto reconocible...');
     state.pdfBytes=new Uint8Array(await file.arrayBuffer());
@@ -532,8 +596,23 @@ async function runOcr(existingDoc=null,automatic=false){
   }catch(err){console.error('Error OCR',err);showStatus(`No se ha podido completar el OCR local (${err.message||'error'}). Puedes introducir los datos manualmente.`, 'error');if(!automatic)toast('Error al ejecutar OCR.');}
   finally{if(worker)await worker.terminate().catch(()=>{});setBusy(false);renderPreview();}
 }
-function clearFile(){if(state.fileUrl)URL.revokeObjectURL(state.fileUrl);state.fileUrl=null;state.file=null;state.pdfBytes=null;state.rawText='';state.demo=false;state.sex='all';$('sexSelect').value='all';$('fileSummary').hidden=true;$('fileInput').value='';setValues({},'');setBusy(false);showStatus('Los PDF escaneados se leerán mediante reconocimiento óptico de caracteres (OCR).');}
+function clearFile(){state.editingMeasurementId=null;$('measurementDate').value='';if(state.fileUrl)URL.revokeObjectURL(state.fileUrl);state.fileUrl=null;state.file=null;state.pdfBytes=null;state.rawText='';state.demo=false;state.sex='all';$('sexSelect').value='all';$('fileSummary').hidden=true;$('fileInput').value='';setValues({},'');setBusy(false);showStatus('Los PDF escaneados se leerán mediante reconocimiento óptico de caracteres (OCR).');}
 function loadDemo(){clearFile();state.demo=true;setValues({weight:'68,4',height:'162',bmi:'26,1',waist:'86',calf:'34',resistance:'548',reactance:'58',phase:'6,0',spa:'-0,8',fm:'20,7',fm_pct:'30,3',ffm:'47,7',ffmi:'18,2',fmi:'7,9',bcm:'25,6',mm:'24,1',smm:'22,5',smi:'8,6',tbw:'34,8',hydration:'73,0',ecw:'14,5',icw:'20,3',ecw_tbw:'41,7'},'demo');showStatus('Datos de demostración inventados. No deben incorporarse a ninguna historia clínica.', 'success');toast('Ejemplo ficticio cargado.');}
+
+document.querySelectorAll('[data-note-mode]').forEach(b=>b.addEventListener('click',()=>{state.noteMode=b.dataset.noteMode;resetVerification();renderPreview();}));
+$('addMeasurement').addEventListener('click',addMeasurement);
+$('measurementDate').addEventListener('input',()=>{resetVerification();renderPreview();});
+$('measurementList').addEventListener('click',e=>{
+  if(state.busy)return;
+  const edit=e.target.closest('[data-edit-measurement]');if(edit){editMeasurement(edit.dataset.editMeasurement);return;}
+  const remove=e.target.closest('[data-remove-measurement]');if(!remove)return;
+  const id=remove.dataset.removeMeasurement;state.measurements=state.measurements.filter(r=>r.id!==id);
+  if(state.editingMeasurementId===id)clearFile();resetVerification();renderPreview();
+});
+$('clearMeasurements').addEventListener('click',()=>{
+  if(state.busy||!confirm('¿Vaciar todas las mediciones y los datos actuales para empezar con otro paciente?'))return;
+  state.measurements=[];state.noteMode='current';clearFile();renderPreview();toast('Evolución vacía. Puedes comenzar con otro paciente.');
+});
 
 document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>showView(b.dataset.view)));
 $('goTemplates').addEventListener('click',()=>showView('templates'));$('backToWorkspace').addEventListener('click',()=>showView('workspace'));
@@ -544,10 +623,10 @@ $('templateSelect').addEventListener('change',e=>applyTemplate(e.target.value));
 $('fieldSearch').addEventListener('input',renderFields);
 $('fieldsContainer').addEventListener('change',e=>{const id=e.target.dataset.fieldCheck;if(!id)return;if(e.target.checked)state.selected.add(id);else state.selected.delete(id);resetVerification();renderFields();renderPreview();});
 $('fieldsContainer').addEventListener('input',e=>{const id=e.target.dataset.fieldValue;if(!id)return;const raw=e.target.value.replace(/[^\d,\.\-+]/g,'').slice(0,20);if(raw)state.values[id]=raw;else delete state.values[id];resetVerification();$('detectedBadge').textContent=`${Object.values(state.values).filter(Boolean).length} detectados`;$('selectionCount').textContent=`${state.selected.size} seleccionados`;renderPreview();});
-$('selectDetected').addEventListener('click',()=>{state.selected=new Set(Object.entries(state.values).filter(([,v])=>String(v).trim()).map(([id])=>id));resetVerification();renderFields();renderPreview();});
+$('selectDetected').addEventListener('click',()=>{const records=state.noteMode==='evolution'?state.measurements:[{values:state.values}];state.selected=new Set(records.flatMap(r=>Object.keys(r.values).filter(id=>hasValue(r.values,id))));resetVerification();renderFields();renderPreview();});
 $('clearSelected').addEventListener('click',()=>{state.selected.clear();resetVerification();renderFields();renderPreview();});
 $('verifiedCheck').addEventListener('change',e=>{state.verified=e.target.checked;renderPreview();});
-$('copyButton').addEventListener('click',async()=>{if(!state.verified||state.demo||state.busy)return;const content=buildText();if(!content)return;try{await navigator.clipboard.writeText(content);toast('Texto copiado. Ya puedes pegarlo en la HC.');}catch{const node=document.createElement('textarea');node.value=content;document.body.appendChild(node);node.select();const okay=document.execCommand('copy');node.remove();toast(okay?'Texto copiado.':'No se ha podido copiar. Selecciona el texto manualmente.');}});
+$('copyButton').addEventListener('click',async()=>{if(!state.verified||noteHasDemo()||state.busy||noteMissingHeight())return;const content=buildText();if(!content)return;try{await navigator.clipboard.writeText(content);toast('Texto copiado. Ya puedes pegarlo en la HC.');}catch{const node=document.createElement('textarea');node.value=content;document.body.appendChild(node);node.select();const okay=document.execCommand('copy');node.remove();toast(okay?'Texto copiado.':'No se ha podido copiar. Selecciona el texto manualmente.');}});
 $('dropzone').addEventListener('click',()=>$('fileInput').click());$('dropzone').addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();$('fileInput').click();}});
 $('fileInput').addEventListener('change',e=>{if(e.target.files[0])loadPdf(e.target.files[0]);});
 for(const type of ['dragenter','dragover'])$('dropzone').addEventListener(type,e=>{e.preventDefault();e.stopPropagation();$('dropzone').classList.add('dragover');});
