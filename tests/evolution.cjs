@@ -80,3 +80,15 @@ assert.equal(run('Object.keys(state.values).length'),0);
 assert.equal(run('state.noteMode'),'current');
 assert.equal(el('copyButton').disabled,true);
 console.log('Evolution: chronological order, sparse and zero values, per-visit height, edits, duplicate dates, copy verification, demo isolation and memory-only data passed');
+
+// Imported visits retain their distinct times and current-only fields after editing.
+run("state.values={ecw:'14'};state.sex='female';installHistory({records:[{date:'2026-05-04',time:'09:15',values:{smi:'7.5'},derived:[]},{date:'2026-05-04',time:'17:45',values:{smi:'8'},derived:[]}],issues:[]});state.selected=new Set(['smi','ecw']);state.includeCutoffs=false;");
+run('editMeasurement(state.measurements[0].id)');
+assert.equal(el('manualMeasurement').open,true);
+assert.equal(el('measurementTime').value,'09:15');
+el('addMeasurement').listeners.click();
+assert.equal(run('state.measurements.length'),2);
+assert.equal(run('state.sex'),'female');
+assert.match(run('buildText()'),/SMI: 7,5 → 8/);
+assert.match(run('buildText()'),/ECW: 14 L/);
+console.log('Imported measurement editing retains timestamps, reference sex and current-only parameters');

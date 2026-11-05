@@ -2,7 +2,7 @@
 
 Aplicación web de apoyo documental para profesionales de Endocrinología y Nutrición Clínica.
 
-Convierte informes PDF de Bodygram HBO en notas de parámetros por línea listas para revisar y copiar en la historia clínica. Incluye plantillas editables por profesional, notas evolutivas por fecha, puntos de corte opcionales (sin cortes del IMC), Hydragram (TBW/FFM), OCR local y compatibilidad Android.
+Convierte informes PDF de Bodygram HBO en notas de parámetros por línea listas para revisar y copiar en la historia clínica. Incluye plantillas editables por profesional, detección automática de tablas históricas y notas evolutivas por fecha y hora, puntos de corte opcionales (sin cortes del IMC), Hydragram (TBW/FFM), OCR local y compatibilidad Android.
 
 ## Privacidad y seguridad
 
@@ -25,13 +25,14 @@ node tests/parser-smoke.cjs
 node tests/template-editor-smoke.cjs
 node tests/pwa-smoke.cjs
 node tests/evolution.cjs
+node tests/history.cjs
 ```
 
 **Versión del código:** BioNota v1.4.
-## Nota evolutiva
+## Nota evolutiva automática
 
-1. Carga un informe o introduce los valores, revisa los datos y asigna la fecha de la medición.
-2. Pulsa **Añadir a evolución** y repite con las siguientes visitas del mismo paciente.
-3. Selecciona **Evolutivo** para obtener valores en orden cronológico, por ejemplo `SMI: 6,9 → 7 → 8,1 kg/m²`.
-4. Puedes editar o retirar visitas. Los parámetros sin valor se omiten; no se rellenan datos ausentes. BCM/h utiliza la talla correspondiente a cada visita.
-5. Usa **Vaciar evolución** antes de comenzar con otro paciente. Las mediciones permanecen solo en memoria y desaparecen al recargar o cerrar la pestaña.
+Al cargar un informe Bodygram con la tabla «Análisis de composición corporal de la base de datos», se detectan sus filas y columnas y se leen sus mediciones automáticamente. La nota cambia a **Evolutivo**, incluye los parámetros históricos disponibles y los ordena por fecha y hora. Dos mediciones del mismo día se conservan si tienen horas diferentes.
+
+Los valores se escriben por parámetro con flechas: `SMI: 6,9 → 7 → 8,1 kg/m²`. Los parámetros presentes únicamente en el resultado actual aparecen como valores únicos. Los datos ausentes o dudosos no se completan ni se desplazan a otra fecha. La lectura de celdas dudosas se repite conservando su posición; las relaciones impresas ayudan a comprobar decimales, sin inventar valores.
+
+Se pueden editar y eliminar mediciones. La entrada manual queda como opción secundaria. Los registros viven solo en memoria; no se guardan al recargar o cerrar. Cargar un nuevo PDF sustituye el histórico anterior para no mezclar pacientes. El PDF de prueba y sus datos no forman parte del repositorio.
