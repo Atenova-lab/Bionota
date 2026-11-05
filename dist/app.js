@@ -84,12 +84,14 @@ function renderFields(){
 function renderTemplateSelect(){const el=$('templateSelect');el.innerHTML=allTemplates().map(t=>`<option value="${escapeHtml(t.id)}" ${state.templateId===t.id?'selected':''}>${escapeHtml(t.name)}${BUILTINS.some(b=>b.id===t.id)?'':' · personalizado'}</option>`).join('');$('templateCount').textContent=allTemplates().length;}
 function applyTemplate(id){const t=allTemplates().find(x=>x.id===id);if(!t)return;state.templateId=id;state.selected=new Set(t.fields);state.format=t.format||'compact';resetVerification();renderTemplateSelect();renderFormats();renderFields();renderPreview();}
 function renderFormats(){document.querySelectorAll('[data-format]').forEach(b=>b.classList.toggle('active',b.dataset.format===state.format));}
-function humanField(f,v){return `${f.short||f.name} ${formatDecimal(v)}${f.unit?' '+f.unit:''}`;}
+function humanField(f,v){return `${f.short||f.name}: ${formatDecimal(v)}${f.unit?' '+f.unit:''}`;}
 function buildText(){
   const groups=[];let num=0;
-  for(const c of CATEGORIES){const valid=FIELDS.filter(f=>f.cat===c.id&&state.selected.has(f.id)&&state.values[f.id]!==undefined&&String(state.values[f.id]).trim()!=='');if(!valid.length)continue;num+=valid.length;groups.push({name:c.name,content:valid.map(f=>humanField(f,state.values[f.id])).join('; ')});}
+  for(const c of CATEGORIES){const valid=FIELDS.filter(f=>f.cat===c.id&&state.selected.has(f.id)&&state.values[f.id]!==undefined&&String(state.values[f.id]).trim()!=='');if(!valid.length)continue;num+=valid.length;groups.push({name:c.name,lines:valid.map(f=>humanField(f,state.values[f.id]))});}
   if(!num)return '';
-  const body=state.format==='sections'?'Bioimpedanciometría (Bodygram HBO):\n'+groups.map(g=>`${g.name}: ${g.content}.`).join('\n'):'Bioimpedanciometría (Bodygram HBO). '+groups.map(g=>g.content).join('; ')+'.';
+  const body=state.format==='sections'
+    ? groups.map(g=>`${g.name.toUpperCase()}\n${g.lines.join('\n')}`).join('\n\n')
+    : groups.flatMap(g=>g.lines).join('\n');
   return (state.demo?'[EJEMPLO FICTICIO · NO INCORPORAR A HISTORIA CLÍNICA]\n':'')+body;
 }
 function renderPreview(){
