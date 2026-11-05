@@ -10,7 +10,7 @@ const sw = fs.readFileSync(path.join(dist, 'sw.js'),'utf8');
 
 assert.equal(manifest.name.startsWith('BioNota'),true);
 assert.equal(manifest.display,'standalone');
-assert.equal(manifest.scope,'/');
+assert.equal(manifest.scope,'./');
 assert.match(html,/rel="manifest"/);
 assert.match(html,/id="installApp"/);
 assert.match(app,/beforeinstallprompt/);
