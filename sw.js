@@ -1,9 +1,9 @@
 /* BioNota offline shell: only application assets, never patient PDFs or values. */
-const CACHE_NAME = 'bionota-static-v3';
+const CACHE_NAME = 'bionota-static-v4';
 const BASE_ASSETS = [
   './', './index.html', './styles.css', './app.js', './manifest.webmanifest',
   './icons/bionota-192.png', './icons/bionota-512.png',
-  './vendor/pdf.min.mjs', './vendor/pdf.worker.min.mjs',
+  './vendor/pdf.min.mjs', './vendor/pdf.worker.min.mjs', './vendor/map-compat.mjs',
   './vendor/tesseract.esm.min.js', './vendor/worker.min.js',
 ];
 const OCR_ASSETS = [
