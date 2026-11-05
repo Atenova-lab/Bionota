@@ -1,0 +1,17 @@
+{
+  "id": "/",
+  "name": "BioNota · Bodygram a historia clínica",
+  "short_name": "BioNota",
+  "description": "Convierte informes Bodygram HBO en notas clínicas personalizadas. Los PDF se procesan en el dispositivo.",
+  "lang": "es",
+  "start_url": "/?installed=1",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#eaf5fd",
+  "theme_color": "#187da8",
+  "categories": ["medical", "productivity"],
+  "icons": [
+    { "src": "/icons/bionota-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icons/bionota-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

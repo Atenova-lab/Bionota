@@ -3,9 +3,15 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <meta name="theme-color" content="#eaf5fd" />
+  <meta name="theme-color" content="#187da8" />
   <meta name="description" content="Convierte informes PDF de Bodygram HBO en notas clínicas estructuradas y personalizables para la historia clínica." />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="BioNota" />
   <title>BioNota | Bodygram a historia clínica</title>
+  <link rel="manifest" href="./manifest.webmanifest" crossorigin="use-credentials" />
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/bionota-192.png" />
+  <link rel="apple-touch-icon" href="./icons/bionota-192.png" />
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
@@ -15,6 +21,7 @@
     <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 2 9 5-9 5-9-5 9-5ZM3 12l9 5 9-5M3 17l9 5 9-5"/></symbol>
     <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-11V5l-8-3-8 3v6c0 7 8 11 8 11Z"/><path d="m9 12 2 2 4-4"/></symbol>
     <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V3m0 0-5 5m5-5 5 5M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12m0 0 5-5m-5 5-5-5M4 17v3h16v-3"/></symbol>
     <symbol id="i-check" viewBox="0 0 24 24"><path d="m4 12 5 5L20 6"/></symbol>
     <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></symbol>
     <symbol id="i-spark" viewBox="0 0 24 24"><path d="m12 2 2.1 7.9L22 12l-7.9 2.1L12 22l-2.1-7.9L2 12l7.9-2.1L12 2Z"/></symbol>
@@ -38,7 +45,7 @@
       </nav>
       <div class="sidebar-bottom">
         <div class="secure-card"><span class="secure-icon"><svg><use href="#i-shield"/></svg></span><b>Privacidad por diseño</b><p>Los informes se procesan en este dispositivo. No guardamos documentos ni datos clínicos.</p></div>
-        <div class="sidebar-credit">Herramienta de apoyo documental <span>·</span> v1.0</div>
+        <div class="sidebar-credit">Herramienta de apoyo documental <span>·</span> v1.1</div>
       </div>
     </aside>
     <main class="main">
@@ -46,6 +53,12 @@
       <div class="content">
         <section id="workspaceView" class="view active-view">
           <div class="intro"><div><div class="eyebrow"><span class="eyebrow-line"></span> DOCUMENTACIÓN CLÍNICA MÁS ÁGIL</div><h1>Del informe a la <em>historia clínica.</em></h1><p>Importa un PDF de Bodygram HBO, elige qué datos quieres conservar y genera un texto listo para revisar y copiar.</p></div><div class="intro-graphic" aria-hidden="true"><div class="graphic-page"><div class="graphic-page-top"></div><div class="graphic-line long"></div><div class="graphic-line"></div><div class="graphic-line medium"></div><div class="graphic-pills"><i></i><i></i><i></i></div></div><div class="graphic-arrow">→</div><div class="graphic-note"><div class="graphic-check">✓</div><div></div><div></div><div></div></div></div></div>
+          <div class="install-panel" id="installPanel">
+            <div class="install-panel-icon"><img src="./icons/bionota-192.png" alt="" width="48" height="48" /></div>
+            <div class="install-panel-copy"><b>BioNota, también como app</b><span>Instálala en tu móvil con icono propio y acceso directo.</span></div>
+            <button class="install-button" type="button" id="installApp"><svg><use href="#i-download"/></svg> Instalar BioNota</button>
+            <div class="install-help" id="installHelp" hidden><b>Cómo instalarla:</b> En Android, abre BioNota en Chrome y pulsa <strong>⋮ → Instalar aplicación</strong> o <strong>Añadir a pantalla de inicio</strong>. En iPhone, abre la página en Safari y selecciona <strong>Compartir → Añadir a pantalla de inicio</strong>.</div>
+          </div>
           <div class="stepper"><span class="step active"><i>1</i> Importar PDF</span><span class="step-line"></span><span class="step"><i>2</i> Seleccionar parámetros</span><span class="step-line"></span><span class="step"><i>3</i> Copiar a HC</span></div>
           <div class="workspace-grid">
             <div class="workspace-left">

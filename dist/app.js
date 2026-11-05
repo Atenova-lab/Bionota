@@ -505,3 +505,38 @@ $('templateGrid').addEventListener('click',e=>{const use=e.target.closest('[data
 $('closeModal').addEventListener('click',closeModal);$('cancelModal').addEventListener('click',closeModal);$('templateModal').addEventListener('click',e=>{if(e.target===$('templateModal'))closeModal();});$('confirmTemplate').addEventListener('click',saveTemplate);document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('templateModal').hidden)closeModal();});
 $('currentDate').textContent=new Intl.DateTimeFormat('es-ES',{day:'numeric',month:'short',year:'numeric'}).format(new Date());
 renderTemplateSelect();renderFields();renderFormats();renderPreview();
+
+// Installable web app: still processes every patient PDF locally in the
+// browser. An Android installation does not transmit clinical documents.
+let installPrompt=null;
+const isStandalone=()=>window.matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+if(isStandalone())$('installPanel').hidden=true;
+window.addEventListener('beforeinstallprompt',event=>{
+  event.preventDefault();
+  installPrompt=event;
+  $('installPanel').hidden=false;
+});
+window.addEventListener('appinstalled',()=>{
+  installPrompt=null;
+  $('installPanel').hidden=true;
+  toast('BioNota se ha instalado en tu dispositivo.');
+});
+$('installApp').addEventListener('click',async()=>{
+  if(installPrompt){
+    const prompt=installPrompt;
+    installPrompt=null;
+    try{
+      await prompt.prompt();
+      const result=await prompt.userChoice;
+      if(result?.outcome==='accepted')toast('La instalación está en marcha.');
+      else $('installHelp').hidden=false;
+    }catch{$('installHelp').hidden=false;}
+  }else $('installHelp').hidden=!$('installHelp').hidden;
+});
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>{
+    navigator.serviceWorker.register('./sw.js').catch(()=>{
+      // The website still works online when browser policy blocks SWs.
+    });
+  });
+}

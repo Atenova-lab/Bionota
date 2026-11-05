@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Icono de BioNota">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#156692"/><stop offset="1" stop-color="#37a8c6"/></linearGradient>
+    <linearGradient id="pulse" x1="0" x2="1"><stop stop-color="#31c2cf"/><stop offset="1" stop-color="#137fa6"/></linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="116" fill="url(#bg)"/>
+  <circle cx="399" cy="112" r="96" fill="#a7ebf7" opacity=".12"/>
+  <circle cx="95" cy="402" r="105" fill="#c4f1fa" opacity=".1"/>
+  <rect x="119" y="92" width="274" height="330" rx="32" fill="#f8fdff"/>
+  <rect x="151" y="124" width="208" height="40" rx="13" fill="#e0f1f8"/>
+  <rect x="176" y="137" width="160" height="14" rx="7" fill="#9dcddc"/>
+  <path d="M154 257h49l24-48 41 94 27-58h61" fill="none" stroke="url(#pulse)" stroke-width="18" stroke-linejoin="round" stroke-linecap="round"/>
+  <rect x="154" y="339" width="140" height="13" rx="6.5" fill="#b8dce8"/>
+  <rect x="154" y="367" width="104" height="13" rx="6.5" fill="#d0e8f0"/>
+  <circle cx="348" cy="360" r="27" fill="#d9f5f1"/>
+  <path d="m336 360 9 9 17-19" fill="none" stroke="#168c8c" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
