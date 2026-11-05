@@ -224,7 +224,10 @@ const HBO_INDEX_ROWS = [
   {id:'spa',label:/angulo de fase estandarizado\s*\(?spa\)?\s*/},
 ];
 function hboNumToken(value){
-  const m=String(value||'').match(/[-+−]?\d{1,5}(?:[.,]\d{1,3})?/);
+  // OCR can read the zero immediately after a minus sign as letter O:
+  // "-O.1 L" is -0.1 L, not +1 L. Preserve the sign before parsing.
+  const repaired=String(value||'').replace(/([-+−]\s*)[oO](?=[.,]\d)/g,(_,sign)=>sign+'0');
+  const m=repaired.match(/[-+−]?\d{1,5}(?:[.,]\d{1,3})?/);
   return m?m[0].replace('−','-'):null;
 }
 function hboNumCandidates(raw,id){
@@ -252,6 +255,14 @@ function hboPick(id,raws,expected=null){
     if(close.length===1)return close[0];
     if(close.length>1)return close.sort((a,b)=>Math.abs(a-expected)-Math.abs(b-expected))[0];
     return null;
+  }
+  if(id==='oh'){
+    // A clearly printed minus in either independent OCR crop outweighs a
+    // second pass that simply missed it. The magnitude must corroborate.
+    const negative=values.filter(n=>n<0);
+    if(negative.length===1&&values.some(n=>n>0&&Math.abs(n+negative[0])<.011))return negative[0];
+    // OH can be negative, so a single unsigned OCR read is not sufficient.
+    if(raws.length<2&&values.some(n=>n!==0))return null;
   }
   if(values.length===1)return values[0];
   // If two OCR passes agree on the same clinically plausible value, use it.
@@ -297,7 +308,7 @@ function parseBodygramCrops({header='',composition='',results='',indices='',extr
   const headSpecs=[
     ['weight',/\bpeso\s*:?\s*([-+]?\d{1,4}(?:[.,]\d{1,2})?)\s*kg/],
     ['height',/\baltura\s*:?\s*([-+]?\d{1,4}(?:[.,]\d{1,2})?)\s*cm/],
-    ['hydration',/\bhidratacion\s*:?\s*([-+]?\d{1,3}(?:[.,]\d{1,2})?)\s*%/],
+    ['hydration',/\bhidrataci[oe]n\s*:?\s*([-+]?\d{1,3}(?:[.,]\d{1,2})?)\s*%/],
     ['resistance',/\brz\s*:?\s*([-+]?\d{2,4}(?:[.,]\d{1,2})?)/],
     ['reactance',/\bxc\s*:?\s*([-+]?\d{1,4}(?:[.,]\d{1,2})?)/],
     ['bmi',/\bbmi\s*:?\s*([-+]?\d{1,3}(?:[.,]\d{1,2})?)/],

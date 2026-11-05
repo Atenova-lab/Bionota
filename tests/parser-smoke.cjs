@@ -119,3 +119,22 @@ const uncertain=context.parseBodygramCrops({...mockSections,results:'resultado\n
 assert.equal(uncertain.values.mm,undefined,'conflicting measured value must not be copied');
 assert.ok(uncertain.needsReview.includes('mm'));
 console.log('HBO table-column extraction and conservative cross-check tests passed');
+
+// Independent OCR crops may disagree on the sign of a *negative* OH value;
+// the faint minus sign must not silently become a positive clinical result.
+const faintMinus=context.parseBodygramCrops({
+  ...mockSections,
+  header:mockSections.header.replace('Hidratación','Hidratacién'),
+  composition:mockSections.composition.replace('Hiperhidratacion (OH) OL','Hiperhidratacién (OH) 0.1L'),
+  results:mockSections.results.replace('\nOL\n0.45 L','\n-O.1L\n0.45 L'),
+});
+assert.equal(faintMinus.values.hydration,'71,1','accent OCR variant should not lose hydration');
+assert.equal(faintMinus.values.oh,'-0,1','signed corroborating crop must preserve negative OH');
+const signUncertain=context.parseBodygramCrops({
+  ...mockSections,
+  composition:mockSections.composition.replace('Hiperhidratacion (OH) OL','Hiperhidratacion (OH) 0.1L'),
+  results:'resultado\nlectura incompleta',
+});
+assert.equal(signUncertain.values.oh,undefined,'single unsigned reading of OH must remain unfilled');
+assert.ok(signUncertain.needsReview.includes('oh'));
+console.log('Signed hydration OCR regression checks passed');
