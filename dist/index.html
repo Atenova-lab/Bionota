@@ -45,7 +45,7 @@
       </nav>
       <div class="sidebar-bottom">
         <div class="secure-card"><span class="secure-icon"><svg><use href="#i-shield"/></svg></span><b>Privacidad por diseño</b><p>Los informes se procesan en este dispositivo. No guardamos documentos ni datos clínicos.</p></div>
-        <div class="sidebar-credit">Herramienta de apoyo documental <span>·</span> v1.1</div>
+        <div class="sidebar-credit">Herramienta de apoyo documental <span>·</span> v1.2</div>
       </div>
     </aside>
     <main class="main">
@@ -70,6 +70,7 @@
               </section>
               <section class="panel fields-panel"><div class="panel-header fields-heading"><div><span class="section-number">02</span><h2>Parámetros del informe</h2><p>Activa los que te interesen y comprueba los valores detectados.</p></div><div class="detected-badge" id="detectedBadge">0 detectados</div></div>
                 <div class="fields-toolbar"><label class="search-box"><svg><use href="#i-search"/></svg><input id="fieldSearch" type="search" placeholder="Buscar parámetro..." autocomplete="off" /></label><button class="small-outline" id="selectDetected">Seleccionar detectados</button><button class="small-outline" id="clearSelected">Limpiar</button></div>
+                <p class="hydragram-help"><strong>Hydragram (TBW/FFM)</strong> indica el porcentaje de agua en la masa libre de grasa. Es distinto de <strong>TBW (L)</strong>, que mide el agua corporal total.</p>
                 <div id="fieldsContainer" class="fields-container"></div>
                 <div class="fields-footer"><span class="selection-count" id="selectionCount">0 seleccionados</span><button class="text-action" id="saveTemplateFromSelection"><svg><use href="#i-plus"/></svg> Guardar como plantilla</button></div>
               </section>
@@ -89,12 +90,23 @@
             </aside>
           </div>
         </section>
-        <section id="templatesView" class="view"><div class="page-header"><div class="eyebrow"><span class="eyebrow-line"></span> PERSONALIZACIÓN</div><h1>Mis <em>plantillas clínicas.</em></h1><p>Crea modelos propios según el tipo de consulta o las preferencias de cada profesional.</p></div><div class="templates-top"><div><h2>Biblioteca de modelos</h2><p>Los modelos personalizados se guardan únicamente en este navegador.</p></div><button class="primary-button inline-button" id="newTemplate"><svg><use href="#i-plus"/></svg> Nueva plantilla</button></div><div class="template-grid" id="templateGrid"></div></section>
+        <section id="templatesView" class="view"><div class="page-header"><div class="eyebrow"><span class="eyebrow-line"></span> PERSONALIZACIÓN</div><h1>Mis <em>plantillas clínicas.</em></h1><p>Crea modelos propios según el tipo de consulta o las preferencias de cada profesional.</p></div><div class="templates-top"><div><h2>Biblioteca de modelos</h2><p>Pulsa <strong>Editar parámetros</strong> en cualquier modelo para marcar qué medidas quieres incluir o excluir. Los cambios se guardan solo en este navegador.</p></div><button class="primary-button inline-button" id="newTemplate"><svg><use href="#i-plus"/></svg> Nueva plantilla</button></div><div class="template-grid" id="templateGrid"></div></section>
         <section id="guideView" class="view"><div class="page-header"><div class="eyebrow"><span class="eyebrow-line"></span> GUÍA RÁPIDA</div><h1>Preparado para tu <em>consulta.</em></h1><p>Un flujo sencillo para transformar informes en datos reutilizables sin transcribirlos a mano.</p></div><div class="guide-grid"><div class="guide-card"><span>01</span><h3>Importa el informe</h3><p>Selecciona el PDF de Bodygram HBO. Primero intentaremos extraer texto; si está formado por imágenes, podrás usar el OCR local.</p></div><div class="guide-card"><span>02</span><h3>Revisa los números</h3><p>Comprueba cada valor y sus unidades. Corrige desde el campo editable cualquier dato que la extracción no haya leído bien.</p></div><div class="guide-card"><span>03</span><h3>Elige tu modelo</h3><p>Utiliza los modelos predefinidos o crea uno propio. Puedes cambiar el formato y la selección de parámetros.</p></div><div class="guide-card"><span>04</span><h3>Pega en la HC</h3><p>Una vez comprobados los datos, copia la nota resultante y pégala en la historia clínica del paciente.</p></div></div><div class="privacy-explainer"><svg><use href="#i-shield"/></svg><div><h3>Datos clínicos y confidencialidad</h3><p>El archivo y sus datos se procesan en la memoria del navegador. No se envían PDFs, texto ni valores a la aplicación. Las plantillas guardan solo nombres, opciones y campos seleccionados, nunca informes o datos de pacientes. Cierra la pestaña al terminar y utiliza únicamente dispositivos autorizados por tu centro.</p></div></div><div class="guide-cta"><div><b>¿Tienes un PDF de Bodygram HBO?</b><p>El diseño de cada versión del informe puede variar. Podemos afinar la lectura con un PDF de ejemplo anonimizado.</p></div><button class="secondary-button" id="backToWorkspace">Abrir conversor <span>→</span></button></div></section>
       </div>
     </main>
   </div>
-  <div class="modal-backdrop" id="templateModal" hidden><div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle"><div class="modal-header"><div><span class="eyebrow">MODELO PERSONALIZADO</span><h2 id="modalTitle">Nueva plantilla</h2></div><button class="close-button" id="closeModal" aria-label="Cerrar">×</button></div><label class="control-label" for="templateName">Nombre del modelo</label><input class="form-input" id="templateName" maxlength="60" placeholder="Ej. Nutrición clínica · Consulta 2" /><label class="control-label" for="templateDescription">Descripción (opcional)</label><input class="form-input" id="templateDescription" maxlength="120" placeholder="Parámetros que suelo utilizar..." /><div class="modal-information">Se guardarán los parámetros que tengas seleccionados actualmente. No se guardarán valores de pacientes.</div><div class="modal-actions"><button class="secondary-button" id="cancelModal">Cancelar</button><button class="primary-button inline-button" id="confirmTemplate"><svg><use href="#i-check"/></svg> Guardar plantilla</button></div></div></div>
+  <div class="modal-backdrop" id="templateModal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="modal-header"><div><span class="eyebrow">PERSONALIZACIÓN DE MODELOS</span><h2 id="modalTitle">Nueva plantilla</h2><p id="modalDescription">Elige exactamente qué parámetros incluir.</p></div><button class="close-button" id="closeModal" aria-label="Cerrar">×</button></div>
+      <label class="control-label" for="templateName">Nombre del modelo</label><input class="form-input" id="templateName" maxlength="60" placeholder="Ej. Nutrición clínica · Consulta 2" />
+      <label class="control-label" for="templateDescription">Descripción (opcional)</label><input class="form-input" id="templateDescription" maxlength="120" placeholder="Parámetros que suelo utilizar..." />
+      <div class="template-picker-heading"><div><b>Parámetros que incluirá la plantilla</b><span id="templateSelectedCount">0 seleccionados</span></div><div class="template-picker-actions"><button type="button" id="templateSelectAll">Marcar todos</button><button type="button" id="templateClearAll">Desmarcar todos</button></div></div>
+      <label class="template-search"><svg><use href="#i-search"/></svg><input type="search" id="templateFieldSearch" placeholder="Buscar entre las medidas..." autocomplete="off" /></label>
+      <div class="template-field-list" id="templateFields" role="group" aria-label="Parámetros de esta plantilla"></div>
+      <div class="modal-information">Se guardará únicamente la lista de parámetros, nunca los valores de un paciente. Editar una plantilla no modifica el informe abierto hasta que uses ese modelo.</div>
+      <div class="modal-actions"><button class="secondary-button" id="cancelModal">Cancelar</button><button class="primary-button inline-button" id="confirmTemplate"><svg><use href="#i-check"/></svg> Guardar plantilla</button></div>
+    </div>
+  </div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <script type="module" src="./app.js"></script>
 </body>
