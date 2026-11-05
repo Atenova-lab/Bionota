@@ -30,6 +30,7 @@ const FIELDS = [
   { id:'bcmi', cat:'body', name:'Índice de masa celular corporal', short:'BCMI', unit:'kg/m²', aliases:['body cell mass index','bcmi'], min:0, max:40 },
   { id:'mm', cat:'muscle', name:'Masa muscular', short:'MM', unit:'kg', aliases:['massa muscolare','masa muscular','muscle mass','mm'], min:0, max:130 },
   { id:'smm', cat:'muscle', name:'Masa muscular esquelética', short:'SMM', unit:'kg', aliases:['skeletal muscle mass','massa muscolare scheletrica','masa muscular esqueletica','smm'], min:0, max:100 },
+  { id:'asmm', cat:'muscle', name:'Masa muscular esquelética apendicular', short:'ASMM', unit:'kg', aliases:['masa muscular esqueletica apendicular','appendicular skeletal muscle mass','asmm'], min:0, max:80 },
   { id:'smi', cat:'muscle', name:'Índice muscular esquelético', short:'SMI', unit:'kg/m²', aliases:['skeletal muscle index','skeletal muscle mass index','indice muscular esqueletico','smi'], min:0, max:30 },
   { id:'asmi', cat:'muscle', name:'Índice muscular apendicular', short:'ASMI', unit:'kg/m²', aliases:['asmi','asmm index','appendicular skeletal muscle mass index','indice muscolare appendicolare'], min:0, max:25 },
   { id:'tbw', cat:'water', name:'Agua corporal total', short:'TBW', unit:'L', aliases:['agua corporal total','total body water','acqua corporea totale','tbw'], min:3, max:140 },
@@ -43,6 +44,9 @@ const FIELDS = [
   { id:'oh', cat:'water', name:'Sobrehidratación estimada', short:'OH', unit:'L', aliases:['overhydration','sobrehidratacion','iperidratazione','oh'], min:-30, max:50 },
   { id:'ecm_bcm', cat:'other', name:'Relación matriz extracelular/masa celular', short:'ECM/BCM', unit:'', aliases:['ecm/bcm','ecm / bcm'], min:0, max:15 },
   { id:'bmr', cat:'other', name:'Metabolismo basal estimado', short:'BMR', unit:'kcal/día', aliases:['metabolismo basal','basal metabolic rate','basal metabolism','metabolismo basale','bmr'], min:300, max:6000 },
+  { id:'bmr_harris', cat:'other', name:'Metabolismo basal Harris-Benedict', short:'BMR Harris-Benedict', unit:'kcal/día', aliases:['bmr harris benedict','metabolismo basal harris benedict'], min:300, max:6000 },
+  { id:'tdee', cat:'other', name:'Gasto energético diario total', short:'TDEE', unit:'kcal/día', aliases:['gasto energetico diario total','total daily energy expenditure','tdee'], min:300, max:10000 },
+  { id:'na_k', cat:'other', name:'Relación sodio/potasio', short:'Na/K', unit:'', aliases:['na/k','sodium potassium ratio'], min:0, max:20 },
 ];
 
 const BUILTINS = [
@@ -53,7 +57,7 @@ const BUILTINS = [
   { id:'obesity', name:'Obesidad y seguimiento', description:'Medidas para documentar cambios ponderales y de compartimentos.', fields:['weight','height','bmi','waist','fm','fm_pct','fmi','ffm','ffmi','phase','tbw'], format:'compact' },
 ];
 const STORE_KEY = 'bionota_templates_v1';
-const state = { values:{}, selected:new Set(BUILTINS[0].fields), templateId:'general', format:'compact', includeCutoffs:true, sex:'all', custom:readTemplates(), rawText:'', source:'', file:null, fileUrl:null, pdfBytes:null, demo:false, verified:false, busy:false, editingTemplateId:null };
+const state = { values:{}, derivedFields:new Set(), selected:new Set(BUILTINS[0].fields), templateId:'general', format:'compact', includeCutoffs:true, sex:'all', custom:readTemplates(), rawText:'', source:'', file:null, fileUrl:null, pdfBytes:null, demo:false, verified:false, busy:false, editingTemplateId:null };
 
 const $ = id => document.getElementById(id);
 const fieldById = id => FIELDS.find(f => f.id === id);
@@ -71,7 +75,7 @@ function showView(id){document.querySelectorAll('.view').forEach(el=>el.classLis
 function showStatus(message,kind='neutral'){$('processStatus').className='status-note'+(kind==='neutral'?'':' '+kind);$('processStatus').querySelector('span:last-child').textContent=message;}
 function setBusy(flag){state.busy=flag;$('forceOcr').disabled=flag||!state.pdfBytes;$('loadDemo').disabled=flag;$('dropzone').style.pointerEvents=flag?'none':'auto';}
 function resetVerification(){state.verified=false;$('verifiedCheck').checked=false;}
-function setValues(values,source,{replace=true}={}) {if(replace)state.values={};for(const [id,v] of Object.entries(values))state.values[id]=v;state.source=source;resetVerification();renderFields();renderPreview();}
+function setValues(values,source,{replace=true,derived=[]}={}) {if(replace)state.values={};for(const [id,v] of Object.entries(values))state.values[id]=v;state.source=source;state.derivedFields=new Set(derived);resetVerification();renderFields();renderPreview();}
 function renderFields(){
   const search=$('fieldSearch').value.toLocaleLowerCase('es').trim();
   let html='';
@@ -109,7 +113,7 @@ function referenceFor(id,sex){
 function humanField(f,v){
   const converted=f.id==='bcm'?bcmByHeight(state.values):formatDecimal(v);
   if(converted===null)return null;
-  const label=f.id==='bcm'?'BCM/h':(f.short||f.name);
+  const label=f.id==='bcm'?'BCM/h':(f.short||f.name)+(state.derivedFields.has(f.id)?' (calculado)':'');
   const unit=f.id==='bcm'?'kg/m':f.unit;
   const cutoff=state.includeCutoffs?referenceFor(f.id,state.sex):null;
   return `${label}${cutoff?` (corte: ${cutoff})`:''}: ${converted}${unit?' '+unit:''}`;
@@ -188,6 +192,190 @@ function parseReport(text){
   return found;
 }
 
+// Bodygram HBO Evolutivo renders measurements as vector outlines instead of PDF
+// text. OCR of the whole page mixes patient values with reference-bar ticks,
+// graph axes, explanatory examples and *older visits*. Read only the four
+// known measurement regions, and only the RESULT column of each table.
+const HBO_RESULT_ROWS = [
+  {id:'phase',label:/^angulo de fase\s*\(?pha\)?\s*/},
+  {id:'tbw',pct:'tbw_pct',base:'weight',label:/^agua (?:corporal )?total\s*\(?tbw\)?\s*/},
+  {id:'ecw',pct:'ecw_pct',base:'tbw',label:/^agua extracelular\s*\(?ecw\)?\s*/},
+  {id:'icw',pct:'icw_pct',base:'tbw',label:/^agua intracelular\s*(?:\(?icw\)?)?\s*/},
+  {id:'ffm',pct:'ffm_pct',base:'weight',label:/^masa libre de grasa\s*\(?ffm\)?\s*/},
+  {id:'fm',pct:'fm_pct',base:'weight',label:/^masa grasa\s*\(?fm\)?\s*/},
+  {id:'bcm',base:'ffm',pct:null,label:/^masa celular metabol\w*\s+activa\s*/},
+  {id:'mm',base:'weight',pct:null,label:/^masa muscular total\s*\(?mm\)?\s*/},
+  {id:'smm',base:'weight',pct:null,label:/^masa del m\w*sculo esqueletico\s*\(?mme\)?\s*/},
+  {id:'asmm',label:/^masa muscular esqueletica apendicular\s*/},
+  {id:'bmr',label:/^tasa metabolica basal\s*\(?bmr\)?\s*/},
+  {id:'bmr_harris',label:/^basal metabolic rate\s*\(?bmr harris\s*/},
+  {id:'tdee',label:/^gast[oe] energetico diario total\s*\(?tde[er]\)?\s*/},
+  {id:'na_k',label:/^na\s*\/\s*k\s*/},
+  {id:'oh',label:/^hiperhidrataci[oe]n\s*\(?oh\)?\s*/},
+  {id:'ecw_tbw',label:/^ecw\s*\/\s*tbw[.\s:]*/},
+];
+const HBO_INDEX_ROWS = [
+  {id:'bmi',label:/indice de masa corporal\s*\(?bmi\)?\s*/},
+  {id:'bcmi',label:/indice de masa celular metabol\w*\s+activa\s*\(?bcmi\)?\s*/},
+  {id:'fmi',label:/indice de masa grasa\s*/},
+  {id:'ffmi',label:/indice de masa libre de grasa\s*/},
+  {id:'smi',label:/indice de masa muscular esqueletica\s*\(?smi\)?\s*/},
+  {id:'asmi',label:/indice de masa muscular esqueletica apendicular\s*/},
+  {id:'spa',label:/angulo de fase estandarizado\s*\(?spa\)?\s*/},
+];
+function hboNumToken(value){
+  const m=String(value||'').match(/[-+−]?\d{1,5}(?:[.,]\d{1,3})?/);
+  return m?m[0].replace('−','-'):null;
+}
+function hboNumCandidates(raw,id){
+  if(!raw)return [];
+  const f=fieldById(id);if(!f)return [];
+  const n=Number(raw.replace(',','.'));if(!Number.isFinite(n))return [];
+  const values=[n];
+  if(id==='ecw_tbw'&&n>=0&&n<=1)values.push(n*100);
+  // Tiny decimal points are often lost by OCR: "144L" can mean "14.4 L".
+  // Only consider repositioning the decimal when it was NOT recognized.
+  if(!/[.,]/.test(raw)){
+    if(Math.abs(n)>=10)values.push(n/10);
+    if(Math.abs(n)>=100)values.push(n/100);
+  }
+  return [...new Set(values.filter(x=>plausible(f,x)))];
+}
+function hboRound(n,digits=1){return Number(n.toFixed(digits)).toString().replace('.',',');}
+function hboPick(id,raws,expected=null){
+  const values=[...new Set(raws.flatMap(raw=>hboNumCandidates(raw,id)))];
+  if(!values.length)return null;
+  // Percentages printed in the same row are independently useful checks,
+  // but never manufacture a measurement from a percentage alone.
+  if(expected!==null){
+    const close=values.filter(n=>Math.abs(n-expected)<=Math.max(.16,expected*.004));
+    if(close.length===1)return close[0];
+    if(close.length>1)return close.sort((a,b)=>Math.abs(a-expected)-Math.abs(b-expected))[0];
+    return null;
+  }
+  if(values.length===1)return values[0];
+  // If two OCR passes agree on the same clinically plausible value, use it.
+  const counts=new Map();
+  for(const raw of raws)for(const v of hboNumCandidates(raw,id))counts.set(v,(counts.get(v)||0)+1);
+  const agreeing=values.filter(v=>counts.get(v)>=2);
+  if(agreeing.length===1)return agreeing[0];
+  // Explicit printed decimal always wins over a possible inferred shift.
+  const decimal=raws.find(raw=>raw&&/[.,]/.test(raw));
+  if(decimal){const val=Number(decimal.replace(',','.'));if(values.includes(val))return val;}
+  // Otherwise, ambiguous digits are not safe for a clinical history.
+  return null;
+}
+function hboTableLines(text){return String(text||'').split(/\r?\n/).map(line=>norm(line)).filter(Boolean);}
+function hboGetRows(text,specs){
+  const rows={};
+  for(const line of hboTableLines(text))for(const spec of specs){
+    const match=spec.label.exec(line);if(!match)continue;
+    const after=line.slice(match.index+match[0].length);
+    const raw=hboNumToken(after)||(spec.id==='oh'&&/^[o0]\s*l\b/.test(after)?'0':null);
+    if(!raw)continue;
+    const pctMatch=after.match(/[-+−]?\d{1,5}(?:[.,]\d{1,2})?\s*(?:kg|l|°)?\s+([-+−]?\d{1,3}(?:[.,]\d{1,2})?)\s*%/);
+    const pctRaw=pctMatch?.[1]||null;
+    // Favor the first fully recognized row. A duplicate from a heading is
+    // not a reason to overwrite it.
+    if(!rows[spec.id])rows[spec.id]={raw,pctRaw};
+  }
+  return rows;
+}
+function hboResultColumn(text){
+  const lines=hboTableLines(text).filter(x=>!/^resultado\b/.test(x));
+  // The result strip has exactly one entry per row. If OCR drops or adds a
+  // row, positional matching is unsafe and this corroboration is discarded.
+  if(lines.length!==HBO_RESULT_ROWS.length)return {};
+  const found={};
+  lines.forEach((line,i)=>{found[HBO_RESULT_ROWS[i].id]=hboNumToken(line)||(/^[o0]\s*l$/.test(line)?'0':null);});
+  return found;
+}
+function parseBodygramCrops({header='',composition='',results='',indices='',extra=''}={}){
+  if(!/parametro\s+resultado/.test(norm(composition))||!/indice de masa corporal/.test(norm(indices)))return null;
+  const found={};const needsReview=[],derived=[];
+  const summary=norm(header);
+  const headSpecs=[
+    ['weight',/\bpeso\s*:?\s*([-+]?\d{1,4}(?:[.,]\d{1,2})?)\s*kg/],
+    ['height',/\baltura\s*:?\s*([-+]?\d{1,4}(?:[.,]\d{1,2})?)\s*cm/],
+    ['hydration',/\bhidratacion\s*:?\s*([-+]?\d{1,3}(?:[.,]\d{1,2})?)\s*%/],
+    ['resistance',/\brz\s*:?\s*([-+]?\d{2,4}(?:[.,]\d{1,2})?)/],
+    ['reactance',/\bxc\s*:?\s*([-+]?\d{1,4}(?:[.,]\d{1,2})?)/],
+    ['bmi',/\bbmi\s*:?\s*([-+]?\d{1,3}(?:[.,]\d{1,2})?)/],
+  ];
+  for(const [id,pattern] of headSpecs){
+    const m=pattern.exec(summary);if(!m)continue;
+    let raw=m[1];
+    if(id==='resistance'&&/\d[.,]\d{2}$/.test(raw))raw=raw.slice(0,-1); // Ω often OCRs as 0/9.
+    const candidates=hboNumCandidates(raw,id);
+    if(candidates.length===1)found[id]=hboRound(candidates[0]);
+    else if(candidates.length>1){
+      // The printed summary uses explicit decimals except when Ω is mistaken
+      // for a final zero; in this case allow a single decimal by context.
+      const explicit=Number(raw.replace(',','.'));
+      if(/[.,]/.test(raw)&&candidates.includes(explicit))found[id]=hboRound(explicit);
+      else if(id==='reactance'&&candidates.includes(explicit/10))found[id]=hboRound(explicit/10);
+      else needsReview.push(id);
+    }
+  }
+  const table=hboGetRows(composition,HBO_RESULT_ROWS);
+  const column=hboResultColumn(results);
+  const p2Rows=new Map(HBO_RESULT_ROWS.map(x=>[x.id,x]));
+  const measures=['tbw','ecw','icw','ffm','fm','bcm','mm','smm','asmm'];
+  // Values needed as denominators are read first, avoiding accidental use of
+  // the separate reference scales in the printed bar charts.
+  for(const id of ['phase',...measures,'bmr','bmr_harris','tdee','na_k','oh','ecw_tbw']){
+    const spec=p2Rows.get(id);const row=table[id];
+    if(!row)continue;
+    const raws=[row.raw,column[id]].filter(Boolean);
+    const percentValue=row.pctRaw?Number(row.pctRaw.replace(',','.')):null;
+    const percentage=percentValue!==null&&Number.isFinite(percentValue)&&percentValue>=0&&percentValue<=100?percentValue:null;
+    const base=spec.base&&found[spec.base]?Number(found[spec.base].replace(',','.')):null;
+    const expected=percentage!==null&&base!==null?base*percentage/100:null;
+    let selected=hboPick(id,raws,expected);
+    if(id==='oh'&&selected===null&&/^[o0]\s*l$/i.test(row.raw))selected=0;
+    if(selected!==null)found[id]=hboRound(selected);
+    else needsReview.push(id);
+    if(spec.pct&&percentage!==null)found[spec.pct]=hboRound(percentage);
+  }
+  // The software gives ECW/TBW as a fraction, even when the visual report
+  // places an L beside it. Store the ratio as a percentage only if it agrees
+  // with the measured compartment volumes.
+  if(found.ecw_tbw){
+    const ratio=Number(found.ecw_tbw.replace(',','.'));
+    const ecw=Number((found.ecw||'').replace(',','.'));
+    const tbw=Number((found.tbw||'').replace(',','.'));
+    if(ratio>=0&&ratio<=100&&ecw>0&&tbw>0&&Math.abs(ratio/100-ecw/tbw)<.025)found.ecw_tbw=hboRound(ratio);
+    else{delete found.ecw_tbw;needsReview.push('ecw_tbw');}
+  }
+  // The table sometimes prints this fraction as "0.5 L", and OCR can read
+  // it as "O5L". The explicit ECW/TBW row permits an independently checked
+  // calculation from the two observed water compartments.
+  if(!found.ecw_tbw&&hboTableLines(composition).some(line=>/^ecw\s*\/\s*tbw[.\s:]+/.test(line))){
+    const ecw=Number((found.ecw||'').replace(',','.'));
+    const tbw=Number((found.tbw||'').replace(',','.'));
+    if(ecw>0&&tbw>0&&ecw<=tbw){found.ecw_tbw=hboRound(ecw/tbw*100);derived.push('ecw_tbw');}
+  }
+  const idx={...hboGetRows(indices,HBO_INDEX_ROWS),...hboGetRows(extra,HBO_INDEX_ROWS)};
+  for(const [id,{raw}] of Object.entries(idx)){
+    const val=hboPick(id,[raw]);
+    if(val===null){needsReview.push(id);continue;}
+    found[id]=hboRound(val,id==='spa'?2:1);
+  }
+  // Indices should agree with the corresponding kg / height² in the SAME
+  // report. A conflict means OCR may have read a digit incorrectly.
+  const height=Number((found.height||'').replace(',','.'))/100;
+  if(height>.9&&height<2.4){
+    for(const [id,massId] of [['bmi','weight'],['bcmi','bcm'],['fmi','fm'],['ffmi','ffm'],['smi','smm'],['asmi','asmm']]){
+      if(!found[id]||!found[massId])continue;
+      const actual=Number(found[id].replace(',','.'));
+      const calculated=Number(found[massId].replace(',','.'))/(height*height);
+      if(Math.abs(actual-calculated)>.25){delete found[id];needsReview.push(id);}
+    }
+  }
+  const sex=/\bsexo\s*:?\s*mujer\b/.test(summary)?'female':/\bsexo\s*:?\s*hombre\b/.test(summary)?'male':null;
+  return {values:found,sex,derived,needsReview:[...new Set(needsReview)].filter(id=>!derived.includes(id))};
+}
+
 function extractLinesFromItems(items){
   const rows=[];
   for(const it of items){if(!it.str?.trim())continue;const x=it.transform?.[4]??0,y=it.transform?.[5]??0;let row=rows.find(r=>Math.abs(r.y-y)<2.6);if(!row){row={y,items:[]};rows.push(row);}row.items.push({x,text:it.str.trim()});}
@@ -195,6 +383,43 @@ function extractLinesFromItems(items){
 }
 let pdfLibrary=null;
 async function getPdfLibrary(){if(!pdfLibrary){pdfLibrary=await import('./vendor/pdf.min.mjs');pdfLibrary.GlobalWorkerOptions.workerSrc=new URL('./vendor/pdf.worker.min.mjs',import.meta.url).href;}return pdfLibrary;}
+function hboCrop(canvas,left,top,right,bottom){
+  const cropped=document.createElement('canvas');
+  const x=Math.round(canvas.width*left),y=Math.round(canvas.height*top);
+  const w=Math.round(canvas.width*(right-left)),h=Math.round(canvas.height*(bottom-top));
+  cropped.width=Math.round(w*1.25);cropped.height=Math.round(h*1.25);
+  const context=cropped.getContext('2d',{willReadFrequently:true});
+  context.fillStyle='#fff';context.fillRect(0,0,cropped.width,cropped.height);
+  context.drawImage(canvas,x,y,w,h,0,0,cropped.width,cropped.height);
+  return cropped;
+}
+async function recognizeBodygram(doc,worker){
+  if(doc.numPages<4)return null;
+  const sections={};
+  const requests=[
+    {page:1,key:'header',crop:[.04,.155,.965,.213]},
+    {page:2,key:'composition',crop:[.041,.063,.448,.568]},
+    {page:2,key:'results',crop:[.245,.070,.351,.568]},
+    {page:3,key:'indices',crop:[.041,.757,.515,.987]},
+    {page:4,key:'extra',crop:[.041,.030,.515,.165]},
+  ];
+  let canvas=null,lastPage=0;
+  for(const req of requests){
+    if(lastPage!==req.page){
+      if(canvas)canvas.width=canvas.height=0;
+      const page=await doc.getPage(req.page);const viewport=page.getViewport({scale:3.0});
+      canvas=document.createElement('canvas');canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
+      await page.render({canvasContext:canvas.getContext('2d',{willReadFrequently:true}),viewport}).promise;
+      lastPage=req.page;
+    }
+    showStatus(`Leyendo la columna de resultados del informe Bodygram (${req.page}/4)...`);
+    const cropped=hboCrop(canvas,...req.crop);
+    try {sections[req.key]=(await worker.recognize(cropped)).data.text;}
+    finally {cropped.width=cropped.height=0;}
+  }
+  if(canvas)canvas.width=canvas.height=0;
+  return parseBodygramCrops(sections);
+}
 async function loadPdf(file){
   if(!file||(!/\.pdf$/i.test(file.name)&&file.type!=='application/pdf')){toast('Selecciona un archivo PDF.');return;}
   if(file.size>25*1024*1024){toast('El PDF supera los 25 MB permitidos.');return;}
@@ -219,6 +444,22 @@ async function runOcr(existingDoc=null,automatic=false){
     showStatus('Preparando el motor OCR local. La primera carga puede tardar unos segundos...');
     const module=await import('./vendor/tesseract.esm.min.js');const Tesseract=module.default;
     worker=await Tesseract.createWorker('eng',1,{workerPath:new URL('./vendor/worker.min.js',import.meta.url).href,corePath:new URL('./vendor/tess-core',import.meta.url).href,langPath:new URL('./vendor/lang',import.meta.url).href,gzip:false,workerBlobURL:false,logger:m=>{if(m.status==='recognizing text')showStatus(`Reconociendo caracteres: ${Math.round((m.progress||0)*100)} %...`);}});
+    await worker.setParameters({tessedit_pageseg_mode:'6'});
+    const specialized=await recognizeBodygram(doc,worker);
+    if(specialized){
+      if(specialized.sex){state.sex=specialized.sex;$('sexSelect').value=state.sex;}
+      setValues(specialized.values,'ocr-bodygram',{derived:specialized.derived});
+      const count=Object.keys(specialized.values).length;
+      $('fileInfo').textContent=`${doc.numPages} páginas · ${count} parámetros leídos en las columnas «resultado»`;
+      const issueNames=specialized.needsReview.map(id=>fieldById(id)?.short||fieldById(id)?.name||id);
+      const derivedNote=specialized.derived.length?' La relación ECW/TBW está señalada como calculada.':'';
+      showStatus(issueNames.length
+        ?`Lectura específica Bodygram: ${count} datos. No se han rellenado los valores dudosos (${issueNames.join(', ')}). Comprueba el PDF antes de copiar.`
+        :`Lectura específica Bodygram: ${count} datos reconocidos en las columnas «resultado».${derivedNote} Revísalos con el PDF antes de copiar.`,
+        issueNames.length?'neutral':'success');
+      return;
+    }
+    await worker.setParameters({tessedit_pageseg_mode:'3'});
     const pages=Math.min(doc.numPages,12);let text='';
     for(let i=1;i<=pages;i++){showStatus(`Aplicando OCR a la página ${i} de ${pages}...`);const page=await doc.getPage(i);const viewport=page.getViewport({scale:2.0});const canvas=document.createElement('canvas');canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);await page.render({canvasContext:canvas.getContext('2d',{willReadFrequently:true}),viewport}).promise;const result=await worker.recognize(canvas);text+='\n'+result.data.text;canvas.width=canvas.height=0;}
     state.rawText+=(state.rawText?'\n':'')+text;const found=parseReport(state.rawText);setValues(found,'ocr');$('fileInfo').textContent=`${doc.numPages} página${doc.numPages===1?'':'s'} · ${Object.keys(found).length} datos identificados (OCR)`;
