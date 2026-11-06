@@ -89,7 +89,7 @@ function formatDecimal(input){return String(input).trim().replace(/\s/g,'').repl
 function toast(message){const el=$('toast');el.textContent=message;el.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.classList.remove('show'),3500);}
 function showView(id){document.querySelectorAll('.view').forEach(el=>el.classList.toggle('active-view',el.id===id+'View'));document.querySelectorAll('[data-view]').forEach(el=>el.classList.toggle('active',el.dataset.view===id));$('breadcrumbTitle').textContent={workspace:'Conversor PDF',templates:'Mis plantillas',guide:'Cómo funciona'}[id];window.scrollTo({top:0,behavior:'smooth'});if(id==='templates')renderTemplates();}
 function showStatus(message,kind='neutral'){$('processStatus').className='status-note'+(kind==='neutral'?'':' '+kind);$('processStatus').querySelector('span:last-child').textContent=message;}
-function setBusy(flag){state.busy=flag;$('forceOcr').disabled=flag||!state.pdfBytes;$('loadDemo').disabled=flag;$('dropzone').style.pointerEvents=flag?'none':'auto';renderMeasurements();}
+function setBusy(flag){state.busy=flag;$('forceOcr').disabled=flag||!state.pdfBytes;$('loadDemo').disabled=flag;$('dropzone').style.pointerEvents=flag?'none':'auto';renderPreview();}
 function resetVerification(){state.verified=false;$('verifiedCheck').checked=false;}
 function setValues(values,source,{replace=true,derived=[]}={}) {if(replace)state.values={};for(const [id,v] of Object.entries(values))state.values[id]=v;state.source=source;state.derivedFields=new Set(derived);resetVerification();renderFields();renderPreview();}
 function renderFields(){
@@ -176,16 +176,16 @@ function buildText(){
   return (noteHasDemo()?'[EJEMPLO FICTICIO · NO INCORPORAR A HISTORIA CLÍNICA]\n':'')+body;
 }
 function renderMeasurements(){
-  $('measurementCount').textContent=`${state.measurements.length} visita${state.measurements.length===1?'':'s'}`;
+  $('measurementCount').textContent=state.busy?'Leyendo…':`${state.measurements.length} visita${state.measurements.length===1?'':'s'}`;
   $('measurementList').innerHTML=sortedMeasurements().map(r=>`<li><div><b>${new Intl.DateTimeFormat('es-ES',{day:'2-digit',month:'short',year:'numeric'}).format(new Date(r.date+'T12:00:00'))}${r.time?' · '+escapeHtml(r.time):''}</b><span>${Object.keys(r.values).filter(id=>hasValue(r.values,id)).length} parámetros${r.demo?' · ficticios':''}${r.id===state.editingMeasurementId?' · editando':''}</span></div><button class="small-outline" type="button" data-edit-measurement="${r.id}" aria-label="Editar medición del ${escapeHtml(r.date)}${r.time?' a las '+escapeHtml(r.time):''}">Editar</button><button class="mini-button" type="button" data-remove-measurement="${r.id}" aria-label="Eliminar medición del ${escapeHtml(r.date)}${r.time?' a las '+escapeHtml(r.time):''}"><svg><use href="#i-trash"/></svg></button></li>`).join('');
   $('clearMeasurements').disabled=!state.measurements.length||state.busy;
   $('addMeasurement').disabled=state.busy||!Object.keys(state.values).some(id=>hasValue(state.values,id));
   $('addMeasurement').innerHTML=`<svg><use href="#i-${state.editingMeasurementId?'check':'plus'}"/></svg> ${state.editingMeasurementId?'Actualizar medición':'Añadir a evolución'}`;
   $('measurementDate').disabled=state.busy;
   $('measurementHint').textContent=state.editingMeasurementId?'Corrige los valores o la fecha y pulsa «Actualizar medición».':state.measurements.length?'Las mediciones se han ordenado por fecha y hora. Puedes revisarlas o corregirlas.':'El evolutivo se detectará automáticamente si el PDF contiene una tabla histórica.';
-  document.querySelectorAll('[data-note-mode]').forEach(b=>{const active=b.dataset.noteMode===state.noteMode;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));});
+  document.querySelectorAll('[data-note-mode]').forEach(b=>{b.disabled=state.busy;const active=b.dataset.noteMode===state.noteMode;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));});
   $('evolutionCaption').hidden=state.noteMode!=='evolution';
-  if(state.noteMode==='evolution')$('evolutionCaption').textContent=state.measurements.length?`Orden cronológico: ${sortedMeasurements().map(r=>r.date.split('-').reverse().join('/')+(r.time?' '+r.time:'')).join(' → ')}. Cada parámetro muestra solo sus valores disponibles.`:'Añade al menos una medición con fecha para generar el evolutivo.';
+  if(state.noteMode==='evolution')$('evolutionCaption').textContent=state.measurements.length?`Orden cronológico: ${sortedMeasurements().map(r=>r.date.split('-').reverse().join('/')+(r.time?' '+r.time:'')).join(' → ')}. Cada parámetro muestra solo sus valores disponibles.`:(state.file?'No se ha podido leer una tabla histórica en este PDF. Revisa el mensaje bajo el archivo.':'Carga un PDF con tabla histórica: el evolutivo se detecta automáticamente.');
 }
 function addMeasurement(){
   if(state.busy)return;
@@ -207,7 +207,7 @@ function editMeasurement(id){
   $('manualMeasurement').open=true;$('measurementDate').focus();
 }
 function renderPreview(){
-  const note=buildText();const preview=$('previewContent');preview.textContent=note||(state.noteMode==='evolution'?'Añade mediciones por fecha para crear la nota evolutiva.':'Todavía no hay datos disponibles para los parámetros seleccionados. Carga un PDF, corrige los valores o prueba el ejemplo ficticio.');preview.classList.toggle('has-content',!!note);$('previewCharCount').textContent=`${note.length} caracteres`;
+  const note=buildText();const preview=$('previewContent');preview.textContent=state.busy?'Leyendo el PDF y buscando las mediciones anteriores. El evolutivo aparecerá automáticamente al terminar.':note||(state.noteMode==='evolution'?'Carga un PDF con tabla histórica para generar automáticamente la nota evolutiva.':'Todavía no hay datos disponibles para los parámetros seleccionados. Carga un PDF, corrige los valores o prueba el ejemplo ficticio.');preview.classList.toggle('has-content',!!note&&!state.busy);$('previewCharCount').textContent=`${note.length} caracteres`;
   const missingHeight=noteMissingHeight();
   $('calcWarning').hidden=!missingHeight;
   $('copyButton').disabled=!note||!state.verified||noteHasDemo()||state.busy||missingHeight;
@@ -868,7 +868,7 @@ $('installApp').addEventListener('click',async()=>{
 });
 if('serviceWorker' in navigator){
   window.addEventListener('load',()=>{
-    navigator.serviceWorker.register('./sw.js').catch(()=>{
+    navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'}).then(registration=>registration.update()).catch(()=>{
       // The website still works online when browser policy blocks SWs.
     });
   });

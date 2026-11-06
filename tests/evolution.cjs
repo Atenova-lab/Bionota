@@ -92,3 +92,11 @@ assert.equal(run('state.sex'),'female');
 assert.match(run('buildText()'),/SMI: 7,5 → 8/);
 assert.match(run('buildText()'),/ECW: 14 L/);
 console.log('Imported measurement editing retains timestamps, reference sex and current-only parameters');
+
+run('state.busy=true;renderPreview()');
+assert.match(el('previewContent').textContent,/Leyendo el PDF/);
+assert.equal(el('measurementCount').textContent,'Leyendo…');
+assert.equal(el('copyButton').disabled,true);
+run('state.busy=false;renderPreview()');
+assert.match(el('previewContent').textContent,/SMI: 7,5 → 8/);
+console.log('Processing progress stays visible until the evolution is ready');

@@ -14,7 +14,7 @@ assert.equal(manifest.scope,'./');
 assert.match(html,/rel="manifest"/);
 assert.match(html,/id="installApp"/);
 assert.match(app,/beforeinstallprompt/);
-assert.match(app,/serviceWorker\.register\('\.\/sw\.js'\)/);
+assert.match(app,/serviceWorker\.register\('\.\/sw\.js'/);
 assert.match(sw,/request\.method !== 'GET'/);
 assert.match(sw,/ALLOWED\.has\(url\.pathname\)/);
 assert.match(sw,/caches\.match\('\.\/index\.html'\)/);
