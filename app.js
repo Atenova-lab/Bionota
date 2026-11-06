@@ -46,6 +46,8 @@ const FIELDS = [
   { id:'bmr', cat:'other', name:'Metabolismo basal estimado', short:'BMR', unit:'kcal/día', aliases:['metabolismo basal','basal metabolic rate','basal metabolism','metabolismo basale','bmr'], min:300, max:6000 },
   { id:'bmr_harris', cat:'other', name:'Metabolismo basal Harris-Benedict', short:'BMR Harris-Benedict', unit:'kcal/día', aliases:['bmr harris benedict','metabolismo basal harris benedict'], min:300, max:6000 },
   { id:'tdee', cat:'other', name:'Gasto energético diario total', short:'TDEE', unit:'kcal/día', aliases:['gasto energetico diario total','total daily energy expenditure','tdee'], min:300, max:10000 },
+  { id:'nutrigram', cat:'other', name:'Nutrigram', unit:'mg 24 h/htm', aliases:['nutrigram','nutrigramma'], min:100, max:5000 },
+  { id:'smm_janssen', cat:'muscle', name:'Masa muscular esquelética · Janssen', short:'SMM Janssen', unit:'kg', aliases:['smm janssen'], min:0, max:100 },
   { id:'na_k', cat:'other', name:'Relación sodio/potasio', short:'Na/K', unit:'', aliases:['na/k','sodium potassium ratio'], min:0, max:20 },
 ];
 
@@ -58,7 +60,7 @@ const BUILTINS = [
 ];
 const STORE_KEY = 'bionota_templates_v1';
 const OVERRIDES_KEY = 'bionota_builtin_overrides_v1';
-const state = { values:{}, derivedFields:new Set(), selected:new Set(BUILTINS[0].fields), templateId:'general', format:'compact', includeCutoffs:true, sex:'all', custom:readTemplates(), overrides:readOverrides(), rawText:'', source:'', file:null, fileUrl:null, pdfBytes:null, demo:false, verified:false, busy:false, editingTemplateId:null, templateDraftFields:new Set(), templateSearch:'' };
+const state = { historyIssues:[], historyReportValues:{}, historyReportDerived:new Set(), values:{}, derivedFields:new Set(), selected:new Set(BUILTINS[0].fields), templateId:'general', format:'compact', noteMode:'current', measurements:[], editingMeasurementId:null, measurementSequence:0, includeCutoffs:true, sex:'all', custom:readTemplates(), overrides:readOverrides(), rawText:'', source:'', file:null, fileUrl:null, pdfBytes:null, demo:false, verified:false, busy:false, editingTemplateId:null, templateDraftFields:new Set(), templateSearch:'' };
 
 const $ = id => document.getElementById(id);
 const fieldById = id => FIELDS.find(f => f.id === id);
@@ -87,7 +89,7 @@ function formatDecimal(input){return String(input).trim().replace(/\s/g,'').repl
 function toast(message){const el=$('toast');el.textContent=message;el.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.classList.remove('show'),3500);}
 function showView(id){document.querySelectorAll('.view').forEach(el=>el.classList.toggle('active-view',el.id===id+'View'));document.querySelectorAll('[data-view]').forEach(el=>el.classList.toggle('active',el.dataset.view===id));$('breadcrumbTitle').textContent={workspace:'Conversor PDF',templates:'Mis plantillas',guide:'Cómo funciona'}[id];window.scrollTo({top:0,behavior:'smooth'});if(id==='templates')renderTemplates();}
 function showStatus(message,kind='neutral'){$('processStatus').className='status-note'+(kind==='neutral'?'':' '+kind);$('processStatus').querySelector('span:last-child').textContent=message;}
-function setBusy(flag){state.busy=flag;$('forceOcr').disabled=flag||!state.pdfBytes;$('loadDemo').disabled=flag;$('dropzone').style.pointerEvents=flag?'none':'auto';}
+function setBusy(flag){state.busy=flag;$('forceOcr').disabled=flag||!state.pdfBytes;$('loadDemo').disabled=flag;$('dropzone').style.pointerEvents=flag?'none':'auto';renderPreview();}
 function resetVerification(){state.verified=false;$('verifiedCheck').checked=false;}
 function setValues(values,source,{replace=true,derived=[]}={}) {if(replace)state.values={};for(const [id,v] of Object.entries(values))state.values[id]=v;state.source=source;state.derivedFields=new Set(derived);resetVerification();renderFields();renderPreview();}
 function renderFields(){
@@ -112,7 +114,7 @@ function bcmByHeight(values){const bcm=numberFromInput(values.bcm);const metres=
 function sexCutoffs(male,female,sex){return sex==='male'?`hombre <${male}`:sex==='female'?`mujer <${female}`:`hombre <${male} / mujer <${female}`;}
 function referenceFor(id,sex){
   switch(id){
-    case 'bmi': return 'bajo IMC <20 (<70 años) / <22 (≥70 años); obesidad >30';
+    case 'bmi': return null;
     case 'waist': return sex==='male'?'hombre ≥102 cm':sex==='female'?'mujer ≥88 cm':'hombre ≥102 cm / mujer ≥88 cm';
     case 'calf': return '<31 cm';
     case 'phase': return 'PhA <3,95°';
@@ -124,30 +126,94 @@ function referenceFor(id,sex){
     default: return null;
   }
 }
-function humanField(f,v){
-  const converted=f.id==='bcm'?bcmByHeight(state.values):formatDecimal(v);
+function humanField(f,v,values=state.values,derived=state.derivedFields){
+  const converted=f.id==='bcm'?bcmByHeight(values):formatDecimal(v);
   if(converted===null)return null;
-  const label=f.id==='bcm'?'BCM/h':(f.short||f.name)+(state.derivedFields.has(f.id)?' (calculado)':'');
+  const label=f.id==='bcm'?'BCM/h':(f.short||f.name)+(derived.has(f.id)?' (calculado)':'');
   const unit=f.id==='bcm'?'kg/m':f.unit;
   const cutoff=state.includeCutoffs?referenceFor(f.id,state.sex):null;
   return `${label}${cutoff?` (corte: ${cutoff})`:''}: ${converted}${unit?' '+unit:''}`;
 }
+// Measurements live in memory only; dates and times come from printed historical cells.
+function validMeasurementDate(value){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(value))return false;
+  const date=new Date(value+'T12:00:00Z');
+  return Number.isFinite(date.getTime())&&date.toISOString().slice(0,10)===value;
+}
+function sortedMeasurements(){return [...state.measurements].sort((a,b)=>measurementStamp(a).localeCompare(measurementStamp(b)));}
+function hasValue(values,id){return values[id]!==undefined&&values[id]!==null&&String(values[id]).trim()!=='';}
+function measurementValue(f,record){
+  if(!hasValue(record.values,f.id))return null;
+  return f.id==='bcm'?bcmByHeight(record.values):formatDecimal(record.values[f.id]);
+}
+function evolutionField(f){
+  const records=sortedMeasurements().filter(r=>hasValue(r.values,f.id));
+  const values=records.map(r=>measurementValue(f,r)).filter(v=>v!==null);
+  if(!values.length){const current=Object.keys(state.historyReportValues).length?state.historyReportValues:state.values;return hasValue(current,f.id)?humanField(f,current[f.id],current,state.historyReportDerived):null;}
+  const label=f.id==='bcm'?'BCM/h':(f.short||f.name);
+  const derived=records.some(r=>r.derived.includes(f.id))?' (incluye calculados)':'';
+  const unit=f.id==='bcm'?'kg/m':f.unit;
+  const cutoff=state.includeCutoffs?referenceFor(f.id,state.sex):null;
+  return `${label}${derived}: ${values.join(' → ')}${unit?' '+unit:''}${cutoff?` (corte: ${cutoff})`:''}`;
+}
+function noteHasDemo(){return state.noteMode==='evolution'?state.measurements.some(r=>r.demo):state.demo;}
+function noteMissingHeight(){
+  if(!state.selected.has('bcm'))return false;
+  const records=state.noteMode==='evolution'?(state.measurements.some(r=>hasValue(r.values,'bcm'))?state.measurements:[{values:Object.keys(state.historyReportValues).length?state.historyReportValues:state.values}]):[{values:state.values}];
+  return records.some(r=>hasValue(r.values,'bcm')&&bcmByHeight(r.values)===null);
+}
 function buildText(){
   const groups=[];let num=0;
-  for(const c of CATEGORIES){const valid=FIELDS.filter(f=>f.cat===c.id&&state.selected.has(f.id)&&state.values[f.id]!==undefined&&String(state.values[f.id]).trim()!=='');const lines=valid.map(f=>humanField(f,state.values[f.id])).filter(Boolean);if(!lines.length)continue;num+=lines.length;groups.push({name:c.name,lines});}
+  for(const c of CATEGORIES){
+    const valid=FIELDS.filter(f=>f.cat===c.id&&state.selected.has(f.id)&&(state.noteMode==='evolution'?(state.measurements.some(r=>hasValue(r.values,f.id))||hasValue(state.historyReportValues,f.id)||hasValue(state.values,f.id)):hasValue(state.values,f.id)));
+    const lines=valid.map(f=>state.noteMode==='evolution'?evolutionField(f):humanField(f,state.values[f.id])).filter(Boolean);
+    if(!lines.length)continue;num+=lines.length;groups.push({name:c.name,lines});
+  }
   if(!num)return '';
   const body=state.format==='sections'
     ? groups.map(g=>`${g.name.toUpperCase()}\n${g.lines.join('\n')}`).join('\n\n')
     : groups.flatMap(g=>g.lines).join('\n');
-  return (state.demo?'[EJEMPLO FICTICIO · NO INCORPORAR A HISTORIA CLÍNICA]\n':'')+body;
+  return (noteHasDemo()?'[EJEMPLO FICTICIO · NO INCORPORAR A HISTORIA CLÍNICA]\n':'')+body;
+}
+function renderMeasurements(){
+  $('measurementCount').textContent=state.busy?'Leyendo…':`${state.measurements.length} visita${state.measurements.length===1?'':'s'}`;
+  $('measurementList').innerHTML=sortedMeasurements().map(r=>`<li><div><b>${new Intl.DateTimeFormat('es-ES',{day:'2-digit',month:'short',year:'numeric'}).format(new Date(r.date+'T12:00:00'))}${r.time?' · '+escapeHtml(r.time):''}</b><span>${Object.keys(r.values).filter(id=>hasValue(r.values,id)).length} parámetros${r.demo?' · ficticios':''}${r.id===state.editingMeasurementId?' · editando':''}</span></div><button class="small-outline" type="button" data-edit-measurement="${r.id}" aria-label="Editar medición del ${escapeHtml(r.date)}${r.time?' a las '+escapeHtml(r.time):''}">Editar</button><button class="mini-button" type="button" data-remove-measurement="${r.id}" aria-label="Eliminar medición del ${escapeHtml(r.date)}${r.time?' a las '+escapeHtml(r.time):''}"><svg><use href="#i-trash"/></svg></button></li>`).join('');
+  $('clearMeasurements').disabled=!state.measurements.length||state.busy;
+  $('addMeasurement').disabled=state.busy||!Object.keys(state.values).some(id=>hasValue(state.values,id));
+  $('addMeasurement').innerHTML=`<svg><use href="#i-${state.editingMeasurementId?'check':'plus'}"/></svg> ${state.editingMeasurementId?'Actualizar medición':'Añadir a evolución'}`;
+  $('measurementDate').disabled=state.busy;
+  $('measurementHint').textContent=state.editingMeasurementId?'Corrige los valores o la fecha y pulsa «Actualizar medición».':state.measurements.length?'Las mediciones se han ordenado por fecha y hora. Puedes revisarlas o corregirlas.':'El evolutivo se detectará automáticamente si el PDF contiene una tabla histórica.';
+  document.querySelectorAll('[data-note-mode]').forEach(b=>{b.disabled=state.busy;const active=b.dataset.noteMode===state.noteMode;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));});
+  $('evolutionCaption').hidden=state.noteMode!=='evolution';
+  if(state.noteMode==='evolution')$('evolutionCaption').textContent=state.measurements.length?`Orden cronológico: ${sortedMeasurements().map(r=>r.date.split('-').reverse().join('/')+(r.time?' '+r.time:'')).join(' → ')}. Cada parámetro muestra solo sus valores disponibles.`:(state.file?'No se ha podido leer una tabla histórica en este PDF. Revisa el mensaje bajo el archivo.':'Carga un PDF con tabla histórica: el evolutivo se detecta automáticamente.');
+}
+function addMeasurement(){
+  if(state.busy)return;
+  const date=$('measurementDate').value,time=$('measurementTime').value;
+  if(!validMeasurementDate(date)){toast('Indica una fecha válida para esta medición.');$('measurementDate').focus();return;}
+  const values=Object.fromEntries(Object.entries(state.values).filter(([id])=>hasValue(state.values,id)));
+  if(!Object.keys(values).length){toast('Introduce al menos un valor para añadir la medición.');return;}
+  if(state.measurements.some(r=>measurementStamp(r)===measurementStamp({date,time})&&r.id!==state.editingMeasurementId)){toast('Ya hay una medición en esa fecha y hora. Usa «Editar» para corregirla.');return;}
+  const record={id:state.editingMeasurementId||String(++state.measurementSequence),date,time,values:{...values},derived:[...state.derivedFields],sex:state.sex,demo:state.demo};
+  const index=state.measurements.findIndex(r=>r.id===record.id);
+  if(index<0)state.measurements.push(record);else state.measurements[index]=record;
+  clearFile();state.sex=record.sex;$('sexSelect').value=record.sex;state.noteMode='evolution';renderPreview();toast('Medición añadida a la evolución.');
+}
+function editMeasurement(id){
+  if(state.busy)return;
+  const record=state.measurements.find(r=>r.id===id);if(!record)return;
+  clearFile();state.editingMeasurementId=id;state.demo=record.demo;state.sex=record.sex;$('sexSelect').value=record.sex;$('measurementDate').value=record.date;$('measurementTime').value=record.time||'';
+  setValues({...record.values},'measurement',{derived:record.derived});
+  $('manualMeasurement').open=true;$('measurementDate').focus();
 }
 function renderPreview(){
-  const note=buildText();const preview=$('previewContent');preview.textContent=note||'Todavía no hay datos disponibles para los parámetros seleccionados. Carga un PDF, corrige los valores o prueba el ejemplo ficticio.';preview.classList.toggle('has-content',!!note);$('previewCharCount').textContent=`${note.length} caracteres`;
-  const missingHeight=state.selected.has('bcm')&&String(state.values.bcm??'').trim()!==''&&bcmByHeight(state.values)===null;
+  const note=buildText();const preview=$('previewContent');preview.textContent=state.busy?'Leyendo el PDF y buscando las mediciones anteriores. El evolutivo aparecerá automáticamente al terminar.':note||(state.noteMode==='evolution'?'Carga un PDF con tabla histórica para generar automáticamente la nota evolutiva.':'Todavía no hay datos disponibles para los parámetros seleccionados. Carga un PDF, corrige los valores o prueba el ejemplo ficticio.');preview.classList.toggle('has-content',!!note&&!state.busy);$('previewCharCount').textContent=`${note.length} caracteres`;
+  const missingHeight=noteMissingHeight();
   $('calcWarning').hidden=!missingHeight;
-  $('copyButton').disabled=!note||!state.verified||state.demo||state.busy||missingHeight;
-  $('resultDisclaimer').textContent=state.demo?'Los datos mostrados son ficticios. Para copiar, carga un informe real y verifica sus valores.':'No se generan diagnósticos ni interpretaciones automáticas.';
+  $('copyButton').disabled=!note||!state.verified||noteHasDemo()||state.busy||missingHeight;
+  $('resultDisclaimer').textContent=noteHasDemo()?'Los datos mostrados son ficticios. Para copiar, carga un informe real y verifica sus valores.':'No se generan diagnósticos ni interpretaciones automáticas.';
   document.querySelectorAll('.step').forEach((s,i)=>s.classList.toggle('active',i===0?true:i===1?!!Object.keys(state.values).length:!!note));
+  renderMeasurements();
 }
 function renderTemplates(){
   $('templateGrid').innerHTML=allTemplates().map(t=>{const builtin=BUILTINS.some(b=>b.id===t.id);const customized=builtin&&!!state.overrides[t.id];return `<article class="template-card"><div class="template-card-top"><div class="template-card-icon"><svg><use href="#i-layers"/></svg></div><span class="card-tag ${!builtin||customized?'custom':''}">${!builtin?'PERSONALIZADA':customized?'AJUSTADA':'PREDEFINIDA'}</span></div><h3>${escapeHtml(t.name)}</h3><p>${escapeHtml(t.description||'Configuración personalizada de parámetros clínicos.')}</p><div class="template-card-bottom"><button class="template-use" data-use="${escapeHtml(t.id)}">Usar modelo →</button><span class="template-count">${t.fields.length} parámetros</span></div><div class="template-card-tools"><button class="template-edit" data-edit="${escapeHtml(t.id)}"><svg><use href="#i-settings"/></svg> Editar parámetros</button>${customized?`<button class="template-rest" data-restore="${escapeHtml(t.id)}" title="Recuperar parámetros originales">Restaurar</button>`:''}${!builtin?`<button class="template-delete" data-delete="${escapeHtml(t.id)}" aria-label="Eliminar plantilla ${escapeHtml(t.name)}" title="Eliminar modelo"><svg><use href="#i-trash"/></svg></button>`:''}</div></article>`;}).join('');
@@ -441,6 +507,117 @@ function parseBodygramCrops({header='',composition='',results='',indices='',extr
   return {values:found,sex,derived,needsReview:[...new Set(needsReview)].filter(id=>!derived.includes(id))};
 }
 
+// Historical Bodygram tables: keep column geometry, timestamps and sparse cells.
+const HISTORY_COLUMNS=['height','weight','bmi','resistance','reactance','phase','hydration','nutrigram','bmr','ffm','fm','tbw','ffmi','fmi','bcm','smi','smm_janssen','na_k'];
+function measurementStamp(record){return record.date+'T'+(record.time||'00:00');}
+function historyDate(raw){
+  const m=String(raw||'').replace(/\s/g,'').match(/^(\d{2})[/.\-](\d{2})[/.\-](\d{4})(?:(\d{2})[:.](\d{2}))?$/);
+  if(!m)return null;const date=`${m[3]}-${m[2]}-${m[1]}`,time=m[4]?`${m[4]}:${m[5]}`:'';
+  return validMeasurementDate(date)&&(!time||(+m[4]<24&&+m[5]<60))?{date,time}:null;
+}
+function historyRaw(raw){
+  const value=String(raw??'').trim().replace(/\s/g,'').replace(',','.');
+  return /^[-+]?\d{1,5}(?:\.\d{1,3})?$/.test(value)?value:null;
+}
+function historyNumber(id,raws,expected=null){
+  const f=fieldById(id);if(!f)return null;
+  const tokens=raws.map(historyRaw).filter(v=>v!==null);if(!tokens.length)return null;
+  const direct=[...new Set(tokens.map(Number).filter(n=>plausible(f,n)))];
+  if(expected!==null){
+    const close=[...new Set(tokens.flatMap(t=>hboNumCandidates(t,id)))].filter(n=>Math.abs(n-expected)<=Math.max(.16,Math.abs(expected)*.004));
+    return close.length===1?close[0]:null;
+  }
+  // Exact agreement beats an imagined decimal shift. Disagreeing plausible
+  // readings require a third read or an independently printed relationship.
+  if(direct.length===1)return direct[0];
+  const agreeing=direct.filter(n=>tokens.filter(t=>Number(t)===n).length>=2);
+  return agreeing.length===1?agreeing[0]:null;
+}
+function parseHistoryRows(rows){
+  const records=[],issues=[];
+  for(const row of rows){
+    const dates=row.dateRaws.map(historyDate).filter(Boolean);
+    const stamps=[...new Set(dates.map(measurementStamp))];
+    if(stamps.length!==1){issues.push({row:row.index,field:'date'});continue;}
+    const values={},raws=Object.fromEntries(HISTORY_COLUMNS.map((id,i)=>[id,row.cells[i]||[]]));
+    for(const id of HISTORY_COLUMNS){const n=historyNumber(id,raws[id]);if(n!==null)values[id]=hboRound(n,id==='na_k'?2:1);}
+    // Only use independent relationships to disambiguate a dropped decimal;
+    // never generate an observation when its cell is empty.
+    const get=id=>hasValue(values,id)?numberFromInput(values[id]):null;
+    const h=heightMeters(values.height),weight=get('weight');
+    const update=(id,expected)=>{if(expected===null||!raws[id].some(historyRaw))return;const n=historyNumber(id,raws[id],expected);if(n===null)delete values[id];else values[id]=hboRound(n);};
+    if(h&&weight!==null)update('bmi',weight/(h*h));
+    // Resolve FFM/FM together using the printed weight; do not infer either
+    // missing compartment from the other one.
+    const ffm=get('ffm'),fm=get('fm');
+    if(weight!==null&&ffm!==null)update('fm',weight-ffm);
+    else if(weight!==null&&fm!==null)update('ffm',weight-fm);
+    if(h){
+      if(get('ffm')!==null)update('ffmi',get('ffm')/(h*h));
+      if(get('fm')!==null)update('fmi',get('fm')/(h*h));
+      if(get('smm_janssen')!==null)update('smi',get('smm_janssen')/(h*h));
+    }
+    const missing=HISTORY_COLUMNS.filter(id=>raws[id].some(v=>String(v).trim())&&!hasValue(values,id));
+    issues.push(...missing.map(field=>({row:row.index,field})));
+    if(Object.keys(values).length<2)continue;
+    const stamp=dates[0];
+    if(records.some(r=>measurementStamp(r)===measurementStamp(stamp))){issues.push({row:row.index,field:'duplicate'});continue;}
+    records.push({...stamp,values,derived:[],source:'pdf-history',rowIndex:row.index});
+  }
+  return {records:records.sort((a,b)=>measurementStamp(a).localeCompare(measurementStamp(b))),issues};
+}
+function collapsePositions(positions){
+  const groups=[];for(const p of positions){if(!groups.length||p-groups[groups.length-1].at(-1)>2)groups.push([p]);else groups.at(-1).push(p);}
+  return groups.map(g=>Math.round(g.reduce((a,b)=>a+b,0)/g.length));
+}
+function detectHistoryGrid({data,width,height}){
+  const left=Math.floor(width*.035),right=Math.ceil(width*.97),teal=[];
+  const isTeal=i=>data[i]<110&&data[i+1]>130&&data[i+2]>140;
+  const grey=i=>data[i]>=195&&data[i]<=237&&Math.abs(data[i]-data[i+1])<16&&Math.abs(data[i+1]-data[i+2])<16;
+  for(let y=Math.floor(height*.4);y<height;y++){
+    let hits=0;for(let x=left;x<right;x+=3)if(isTeal((y*width+x)*4))hits++;
+    if(hits>(right-left)/3*.70)teal.push(y);
+  }
+  if(!teal.length)return null;
+  const top=teal.at(-1)+1,lines=[];
+  for(let y=top;y<height;y++){
+    let hits=0;for(let x=left;x<right;x+=2)if(grey((y*width+x)*4))hits++;
+    if(hits>(right-left)/2*.70)lines.push(y);
+  }
+  const ys=collapsePositions(lines);if(ys.length<3||ys.length>35)return null;
+  const bottom=ys.at(-1),columns=[];
+  for(let x=left;x<right;x++){
+    let hits=0;for(let y=top+2;y<bottom;y+=2)if(grey((y*width+x)*4))hits++;
+    if(hits>(bottom-top)/2*.70)columns.push(x);
+  }
+  const xs=collapsePositions(columns);if(xs.length!==21)return null;
+  const heights=ys.slice(2).map((y,i)=>y-ys[i+1]);
+  if(heights.some(h=>h<height*.008||Math.abs(h-heights[0])>Math.max(4,heights[0]*.15)))return null;
+  return {xs,ys,rowCount:ys.length-2,headerTop:ys[0],headerBottom:ys[1]};
+}
+function tsvCells(tsv,xs,bandHeight,rowCount){
+  const cells=Array.from({length:rowCount},()=>Array.from({length:xs.length-1},()=>[]));
+  for(const line of String(tsv||'').split(/\r?\n/).slice(1)){
+    const t=line.split('\t');if(t.length<12||t[0]!=='5'||!t[11].trim()||Number(t[10])<25)continue;
+    const x=+t[6],y=+t[7],w=+t[8],h=+t[9],row=Math.floor((y+h/2)/bandHeight),col=xs.findIndex((v,i)=>i<xs.length-1&&x+w/2>=v&&x+w/2<xs[i+1]);
+    if(row<0||row>=rowCount||col<0||x<xs[col]-3||x+w>xs[col+1]+3)continue;
+    cells[row][col].push({x,text:t[11]});
+  }
+  return cells.map(row=>row.map(words=>words.sort((a,b)=>a.x-b.x).map(w=>w.text).join('')));
+}
+function installHistory(result){
+  state.historyReportValues={...state.values};state.historyReportDerived=new Set(state.derivedFields);
+  state.measurements=result.records.map(r=>({...r,id:String(++state.measurementSequence),sex:state.sex,demo:false}));
+  state.historyIssues=result.issues;state.editingMeasurementId=null;
+  if(state.measurements.length){
+    state.noteMode='evolution';
+    // Every available historical parameter is initially included. The user
+    // can still switch models or deselect individual parameters afterwards.
+    for(const record of state.measurements)for(const id of Object.keys(record.values))state.selected.add(id);
+    resetVerification();renderFields();renderPreview();
+  }
+}
+
 function extractLinesFromItems(items){
   const rows=[];
   for(const it of items){if(!it.str?.trim())continue;const x=it.transform?.[4]??0,y=it.transform?.[5]??0;let row=rows.find(r=>Math.abs(r.y-y)<2.6);if(!row){row={y,items:[]};rows.push(row);}row.items.push({x,text:it.str.trim()});}
@@ -485,10 +662,93 @@ async function recognizeBodygram(doc,worker){
   if(canvas)canvas.width=canvas.height=0;
   return parseBodygramCrops(sections);
 }
+async function createOcrWorker(){
+  const module=await import('./vendor/tesseract.esm.min.js');
+  const worker=await module.default.createWorker('eng',1,{workerPath:new URL('./vendor/worker.min.js',import.meta.url).href,corePath:new URL('./vendor/tess-core',import.meta.url).href,langPath:new URL('./vendor/lang',import.meta.url).href,gzip:false,workerBlobURL:false});
+  await worker.setParameters({tessedit_pageseg_mode:'6'});return worker;
+}
+function historyImage(canvas,grid,column=null,rowOnly=null){
+  const scale=2,gap=20,firstRow=grid.ys[1],bandHeight=Math.ceil((grid.ys[2]-firstRow-6)*scale)+gap;
+  const cols=column===null?Array.from({length:20},(_,i)=>i):[column];
+  const rows=rowOnly===null?Array.from({length:grid.rowCount},(_,i)=>i):[rowOnly];
+  const output=document.createElement('canvas'),xs=[0];
+  for(const c of cols)xs.push(xs.at(-1)+Math.round((grid.xs[c+1]-grid.xs[c]-6)*scale)+gap);
+  output.width=xs.at(-1);output.height=rows.length*bandHeight;
+  const ctx=output.getContext('2d',{willReadFrequently:true});ctx.fillStyle='#fff';ctx.fillRect(0,0,output.width,output.height);
+  rows.forEach((r,ri)=>cols.forEach((c,ci)=>{
+    const sx=grid.xs[c]+3,sy=grid.ys[r+1]+3,sw=grid.xs[c+1]-grid.xs[c]-6,sh=grid.ys[r+2]-grid.ys[r+1]-6;
+    ctx.drawImage(canvas,sx,sy,sw,sh,xs[ci]+gap/2,ri*bandHeight+gap/2,sw*scale,sh*scale);
+  }));
+  // Red/orange historical rows must be as legible as black ones. Borders
+  // are removed using cell geometry before binarizing the printed text.
+  const pixels=ctx.getImageData(0,0,output.width,output.height);
+  for(let i=0;i<pixels.data.length;i+=4){const v=Math.min(pixels.data[i],pixels.data[i+1],pixels.data[i+2])<160?0:255;pixels.data[i]=pixels.data[i+1]=pixels.data[i+2]=v;}
+  ctx.putImageData(pixels,0,0);return {canvas:output,xs,bandHeight};
+}
+async function recognizeHistory(doc,existingWorker=null){
+  let worker=existingWorker,owned=false;
+  const combined={records:[],issues:[]};
+  try{
+    for(let pageNumber=doc.numPages;pageNumber>=Math.max(1,doc.numPages-3);pageNumber--){
+      showStatus(`Buscando mediciones anteriores en la página ${pageNumber} de ${doc.numPages}...`);
+      const page=await doc.getPage(pageNumber),viewport=page.getViewport({scale:3.5});
+      const canvas=document.createElement('canvas');canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
+      try{
+        const ctx=canvas.getContext('2d',{willReadFrequently:true});await page.render({canvasContext:ctx,viewport}).promise;
+        const grid=detectHistoryGrid(ctx.getImageData(0,0,canvas.width,canvas.height));if(!grid)continue;
+        if(!worker){worker=await createOcrWorker();owned=true;}
+        await worker.setParameters({tessedit_pageseg_mode:'6',tessedit_char_whitelist:''});
+        const header=hboCrop(canvas,grid.xs[0]/canvas.width,grid.headerTop/canvas.height,grid.xs.at(-1)/canvas.width,grid.headerBottom/canvas.height);
+        let heading='';try{heading=norm((await worker.recognize(header)).data.text);}finally{header.width=header.height=0;}
+        if(!/fecha/.test(heading)||!/(ffmi|fmi)/.test(heading)||!/janssen/.test(heading)||!/tbw/.test(heading))continue;
+        await worker.setParameters({tessedit_pageseg_mode:'6',tessedit_char_whitelist:'0123456789.,:/-'});
+        const image=historyImage(canvas,grid);let full;
+        try{const result=await worker.recognize(image.canvas,{}, {tsv:true,text:true});full=tsvCells(result.data.tsv,image.xs,image.bandHeight,grid.rowCount);}finally{image.canvas.width=image.canvas.height=0;}
+        const rows=Array.from({length:grid.rowCount},(_,r)=>({index:r,dateRaws:[full[r][1]],cells:HISTORY_COLUMNS.map((id,i)=>[full[r][i+2]])}));
+        for(let col=1;col<20;col++){
+          showStatus(`Leyendo el evolutivo: columna ${col} de 19, ${grid.rowCount} mediciones...`);
+          const strip=historyImage(canvas,grid,col);let cells;
+          try{const result=await worker.recognize(strip.canvas,{}, {tsv:true,text:true});cells=tsvCells(result.data.tsv,strip.xs,strip.bandHeight,grid.rowCount);}finally{strip.canvas.width=strip.canvas.height=0;}
+          for(let r=0;r<grid.rowCount;r++){if(col===1)rows[r].dateRaws.push(cells[r][0]);else rows[r].cells[col-2].push(cells[r][0]);}
+        }
+        // Re-read only ambiguous cells, retaining each cell's own row/column.
+        // Never shift subsequent values when a cell is blank or unreadable.
+        let parsed=parseHistoryRows(rows);
+        const retries=[...new Map(parsed.issues.filter(i=>i.field!=='duplicate').map(i=>[i.row+':'+i.field,i])).values()];
+        await worker.setParameters({tessedit_pageseg_mode:'7'});
+        for(let i=0;i<retries.length;i++){
+          const issue=retries[i],col=issue.field==='date'?1:HISTORY_COLUMNS.indexOf(issue.field)+2;if(col<1)continue;
+          showStatus(`Comprobando ${i+1} de ${retries.length} celdas dudosas del evolutivo...`);
+          const cell=historyImage(canvas,grid,col,issue.row);
+          try{const text=(await worker.recognize(cell.canvas)).data.text.trim();if(col===1)rows[issue.row].dateRaws.push(text);else rows[issue.row].cells[col-2].push(text);}finally{cell.canvas.width=cell.canvas.height=0;}
+        }
+        parsed=parseHistoryRows(rows);
+        for(const issue of parsed.issues.filter(i=>i.field!=='duplicate')){
+          const col=issue.field==='date'?1:HISTORY_COLUMNS.indexOf(issue.field)+2;if(col<1)continue;
+          // Preserve anti-aliased decimal dots in a final, larger color crop.
+          // Binarization is useful for colored rows but can erase a faint dot.
+          const crop=document.createElement('canvas'),sx=grid.xs[col]+3,sy=grid.ys[issue.row+1]+3,sw=grid.xs[col+1]-grid.xs[col]-6,sh=grid.ys[issue.row+2]-grid.ys[issue.row+1]-6;
+          crop.width=Math.round(sw*4);crop.height=Math.round(sh*4);
+          crop.getContext('2d').drawImage(canvas,sx,sy,sw,sh,0,0,crop.width,crop.height);
+          try{const text=(await worker.recognize(crop)).data.text.trim();if(col===1)rows[issue.row].dateRaws.push(text);else rows[issue.row].cells[col-2].push(text);}finally{crop.width=crop.height=0;}
+        }
+        parsed=parseHistoryRows(rows);combined.records.push(...parsed.records);combined.issues.push(...parsed.issues);
+      }finally{canvas.width=canvas.height=0;}
+    }
+    // A repeated table on another page is not an additional visit. Conflicting
+    // duplicates are withheld rather than chosen arbitrarily.
+    const unique=new Map(),conflicts=new Set();
+    for(const r of combined.records){const stamp=measurementStamp(r),old=unique.get(stamp);if(!old){unique.set(stamp,r);continue;}for(const id of Object.keys(r.values)){if(conflicts.has(stamp+':'+id))continue;if(old.values[id]===undefined)old.values[id]=r.values[id];else if(old.values[id]!==r.values[id]){delete old.values[id];conflicts.add(stamp+':'+id);combined.issues.push({row:r.rowIndex,field:id});}}}
+    combined.records=[...unique.values()];return combined;
+  }finally{
+    if(worker){if(owned)await worker.terminate().catch(()=>{});else await worker.setParameters({tessedit_pageseg_mode:'6',tessedit_char_whitelist:''});}
+  }
+}
+
 async function loadPdf(file){
   if(!file||(!/\.pdf$/i.test(file.name)&&file.type!=='application/pdf')){toast('Selecciona un archivo PDF.');return;}
   if(file.size>25*1024*1024){toast('El PDF supera los 25 MB permitidos.');return;}
-  setBusy(true);state.sex='all';$('sexSelect').value='all';if(state.fileUrl)URL.revokeObjectURL(state.fileUrl);state.file=file;state.fileUrl=URL.createObjectURL(file);state.demo=false;state.pdfBytes=null;state.rawText='';setValues({},'');$('fileSummary').hidden=false;$('fileName').textContent=file.name;$('fileInfo').textContent=`${(file.size/1024/1024).toFixed(2).replace('.',',')} MB · abriendo...`;
+  state.measurements=[];state.historyIssues=[];state.historyReportValues={};state.historyReportDerived=new Set();state.noteMode='current';state.editingMeasurementId=null;$('measurementDate').value='';$('measurementTime').value='';setBusy(true);state.sex='all';$('sexSelect').value='all';if(state.fileUrl)URL.revokeObjectURL(state.fileUrl);state.file=file;state.fileUrl=URL.createObjectURL(file);state.demo=false;state.pdfBytes=null;state.rawText='';setValues({},'');$('fileSummary').hidden=false;$('fileName').textContent=file.name;$('fileInfo').textContent=`${(file.size/1024/1024).toFixed(2).replace('.',',')} MB · abriendo...`;
   try{
     showStatus('Abriendo PDF y buscando texto reconocible...');
     state.pdfBytes=new Uint8Array(await file.arrayBuffer());
@@ -496,7 +756,7 @@ async function loadPdf(file){
     const pages=Math.min(doc.numPages,12);const chunks=[];
     for(let i=1;i<=pages;i++){showStatus(`Leyendo texto de la página ${i} de ${pages}...`);const page=await doc.getPage(i);const content=await page.getTextContent();chunks.push(extractLinesFromItems(content.items));}
     state.rawText=chunks.join('\n');let found=parseReport(state.rawText);$('fileInfo').textContent=`${doc.numPages} página${doc.numPages===1?'':'s'} · ${Object.keys(found).length} datos identificados`;
-    if(Object.keys(found).length>=3){setValues(found,'pdf');showStatus(`Texto extraído. Se han identificado ${Object.keys(found).length} parámetros. Comprueba que coinciden con el informe.`, 'success');}
+    if(Object.keys(found).length>=3){setValues(found,'pdf');const history=await recognizeHistory(doc);installHistory(history);showStatus(history.records.length?`Evolutivo detectado automáticamente: ${history.records.length} mediciones. ${history.issues.length?(history.issues.length===1?'1 valor dudoso omitido. ':history.issues.length+' valores dudosos omitidos. '):''}Revisa los datos antes de copiarlos.`:`Texto extraído. Se han identificado ${Object.keys(found).length} parámetros. Comprueba que coinciden con el informe.`, 'success');}
     else{setValues(found,'pdf');showStatus('No se han localizado suficientes parámetros en el texto. Iniciando OCR local...');await runOcr(doc,true);}
   }catch(err){console.error('Error leyendo PDF',err);showStatus(`No se ha podido procesar este PDF (${err.message||'error de lectura'}). Prueba con otro informe.`, 'error');}
   finally{setBusy(false);renderPreview();}
@@ -507,18 +767,17 @@ async function runOcr(existingDoc=null,automatic=false){
   try{
     const pdfjs=await getPdfLibrary();const doc=existingDoc||await pdfjs.getDocument({data:state.pdfBytes.slice(),useSystemFonts:true}).promise;
     showStatus('Preparando el motor OCR local. La primera carga puede tardar unos segundos...');
-    const module=await import('./vendor/tesseract.esm.min.js');const Tesseract=module.default;
-    worker=await Tesseract.createWorker('eng',1,{workerPath:new URL('./vendor/worker.min.js',import.meta.url).href,corePath:new URL('./vendor/tess-core',import.meta.url).href,langPath:new URL('./vendor/lang',import.meta.url).href,gzip:false,workerBlobURL:false,logger:m=>{if(m.status==='recognizing text')showStatus(`Reconociendo caracteres: ${Math.round((m.progress||0)*100)} %...`);}});
-    await worker.setParameters({tessedit_pageseg_mode:'6'});
+    worker=await createOcrWorker();
     const specialized=await recognizeBodygram(doc,worker);
     if(specialized){
       if(specialized.sex){state.sex=specialized.sex;$('sexSelect').value=state.sex;}
       setValues(specialized.values,'ocr-bodygram',{derived:specialized.derived});
+      const history=await recognizeHistory(doc,worker);installHistory(history);
       const count=Object.keys(specialized.values).length;
       $('fileInfo').textContent=`${doc.numPages} páginas · ${count} parámetros leídos en las columnas «resultado»`;
       const issueNames=specialized.needsReview.map(id=>fieldById(id)?.short||fieldById(id)?.name||id);
       const derivedNote=specialized.derived.length?' La relación ECW/TBW está señalada como calculada.':'';
-      showStatus(issueNames.length
+      showStatus(history.records.length?`Evolutivo detectado automáticamente: ${history.records.length} mediciones. ${history.issues.length?(history.issues.length===1?'1 valor dudoso omitido. ':history.issues.length+' valores dudosos omitidos. '):''}Comprueba los valores y las unidades con el PDF antes de copiar.`:issueNames.length
         ?`Lectura específica Bodygram: ${count} datos. No se han rellenado los valores dudosos (${issueNames.join(', ')}). Comprueba el PDF antes de copiar.`
         :`Lectura específica Bodygram: ${count} datos reconocidos en las columnas «resultado».${derivedNote} Revísalos con el PDF antes de copiar.`,
         issueNames.length?'neutral':'success');
@@ -527,13 +786,29 @@ async function runOcr(existingDoc=null,automatic=false){
     await worker.setParameters({tessedit_pageseg_mode:'3'});
     const pages=Math.min(doc.numPages,12);let text='';
     for(let i=1;i<=pages;i++){showStatus(`Aplicando OCR a la página ${i} de ${pages}...`);const page=await doc.getPage(i);const viewport=page.getViewport({scale:2.0});const canvas=document.createElement('canvas');canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);await page.render({canvasContext:canvas.getContext('2d',{willReadFrequently:true}),viewport}).promise;const result=await worker.recognize(canvas);text+='\n'+result.data.text;canvas.width=canvas.height=0;}
-    state.rawText+=(state.rawText?'\n':'')+text;const found=parseReport(state.rawText);setValues(found,'ocr');$('fileInfo').textContent=`${doc.numPages} página${doc.numPages===1?'':'s'} · ${Object.keys(found).length} datos identificados (OCR)`;
-    showStatus(Object.keys(found).length?`OCR terminado: ${Object.keys(found).length} valores candidatos. Es imprescindible revisarlos y corregirlos si procede.`:'El OCR ha finalizado, pero no ha identificado campos con suficiente seguridad. Puedes introducir los valores manualmente.',Object.keys(found).length?'success':'error');
+    state.rawText+=(state.rawText?'\n':'')+text;const found=parseReport(state.rawText);setValues(found,'ocr');const history=await recognizeHistory(doc,worker);installHistory(history);$('fileInfo').textContent=`${doc.numPages} página${doc.numPages===1?'':'s'} · ${Object.keys(found).length} datos identificados (OCR)`;
+    showStatus(history.records.length?`Evolutivo detectado automáticamente: ${history.records.length} mediciones. Revisa los datos antes de copiar.`:Object.keys(found).length?`OCR terminado: ${Object.keys(found).length} valores candidatos. Es imprescindible revisarlos y corregirlos si procede.`:'El OCR ha finalizado, pero no ha identificado campos con suficiente seguridad. Puedes introducir los valores manualmente.',Object.keys(found).length?'success':'error');
   }catch(err){console.error('Error OCR',err);showStatus(`No se ha podido completar el OCR local (${err.message||'error'}). Puedes introducir los datos manualmente.`, 'error');if(!automatic)toast('Error al ejecutar OCR.');}
   finally{if(worker)await worker.terminate().catch(()=>{});setBusy(false);renderPreview();}
 }
-function clearFile(){if(state.fileUrl)URL.revokeObjectURL(state.fileUrl);state.fileUrl=null;state.file=null;state.pdfBytes=null;state.rawText='';state.demo=false;state.sex='all';$('sexSelect').value='all';$('fileSummary').hidden=true;$('fileInput').value='';setValues({},'');setBusy(false);showStatus('Los PDF escaneados se leerán mediante reconocimiento óptico de caracteres (OCR).');}
+function clearFile(){state.editingMeasurementId=null;$('measurementDate').value='';$('measurementTime').value='';if(state.fileUrl)URL.revokeObjectURL(state.fileUrl);state.fileUrl=null;state.file=null;state.pdfBytes=null;state.rawText='';state.demo=false;state.sex='all';$('sexSelect').value='all';$('fileSummary').hidden=true;$('fileInput').value='';setValues({},'');setBusy(false);showStatus('Los PDF escaneados se leerán mediante reconocimiento óptico de caracteres (OCR).');}
 function loadDemo(){clearFile();state.demo=true;setValues({weight:'68,4',height:'162',bmi:'26,1',waist:'86',calf:'34',resistance:'548',reactance:'58',phase:'6,0',spa:'-0,8',fm:'20,7',fm_pct:'30,3',ffm:'47,7',ffmi:'18,2',fmi:'7,9',bcm:'25,6',mm:'24,1',smm:'22,5',smi:'8,6',tbw:'34,8',hydration:'73,0',ecw:'14,5',icw:'20,3',ecw_tbw:'41,7'},'demo');showStatus('Datos de demostración inventados. No deben incorporarse a ninguna historia clínica.', 'success');toast('Ejemplo ficticio cargado.');}
+
+document.querySelectorAll('[data-note-mode]').forEach(b=>b.addEventListener('click',()=>{state.noteMode=b.dataset.noteMode;resetVerification();renderPreview();}));
+$('addMeasurement').addEventListener('click',addMeasurement);
+$('measurementDate').addEventListener('input',()=>{resetVerification();renderPreview();});
+$('measurementTime').addEventListener('input',()=>{resetVerification();renderPreview();});
+$('measurementList').addEventListener('click',e=>{
+  if(state.busy)return;
+  const edit=e.target.closest('[data-edit-measurement]');if(edit){editMeasurement(edit.dataset.editMeasurement);return;}
+  const remove=e.target.closest('[data-remove-measurement]');if(!remove)return;
+  const id=remove.dataset.removeMeasurement;state.measurements=state.measurements.filter(r=>r.id!==id);
+  if(state.editingMeasurementId===id)clearFile();resetVerification();renderPreview();
+});
+$('clearMeasurements').addEventListener('click',()=>{
+  if(state.busy||!confirm('¿Vaciar todas las mediciones y los datos actuales para empezar con otro paciente?'))return;
+  state.measurements=[];state.historyReportValues={};state.historyReportDerived=new Set();state.historyIssues=[];state.noteMode='current';clearFile();renderPreview();toast('Evolución vacía. Puedes comenzar con otro paciente.');
+});
 
 document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>showView(b.dataset.view)));
 $('goTemplates').addEventListener('click',()=>showView('templates'));$('backToWorkspace').addEventListener('click',()=>showView('workspace'));
@@ -543,11 +818,11 @@ $('sexSelect').addEventListener('change',e=>{state.sex=e.target.value;resetVerif
 $('templateSelect').addEventListener('change',e=>applyTemplate(e.target.value));
 $('fieldSearch').addEventListener('input',renderFields);
 $('fieldsContainer').addEventListener('change',e=>{const id=e.target.dataset.fieldCheck;if(!id)return;if(e.target.checked)state.selected.add(id);else state.selected.delete(id);resetVerification();renderFields();renderPreview();});
-$('fieldsContainer').addEventListener('input',e=>{const id=e.target.dataset.fieldValue;if(!id)return;const raw=e.target.value.replace(/[^\d,\.\-+]/g,'').slice(0,20);if(raw)state.values[id]=raw;else delete state.values[id];resetVerification();$('detectedBadge').textContent=`${Object.values(state.values).filter(Boolean).length} detectados`;$('selectionCount').textContent=`${state.selected.size} seleccionados`;renderPreview();});
-$('selectDetected').addEventListener('click',()=>{state.selected=new Set(Object.entries(state.values).filter(([,v])=>String(v).trim()).map(([id])=>id));resetVerification();renderFields();renderPreview();});
+$('fieldsContainer').addEventListener('input',e=>{const id=e.target.dataset.fieldValue;if(!id)return;const raw=e.target.value.replace(/[^\d,\.\-+]/g,'').slice(0,20);if(raw)state.values[id]=raw;else delete state.values[id];if(!state.editingMeasurementId&&Object.keys(state.historyReportValues).length){if(raw)state.historyReportValues[id]=raw;else delete state.historyReportValues[id];}resetVerification();$('detectedBadge').textContent=`${Object.values(state.values).filter(Boolean).length} detectados`;$('selectionCount').textContent=`${state.selected.size} seleccionados`;renderPreview();});
+$('selectDetected').addEventListener('click',()=>{const records=state.noteMode==='evolution'?state.measurements:[{values:state.values}];state.selected=new Set(records.flatMap(r=>Object.keys(r.values).filter(id=>hasValue(r.values,id))));resetVerification();renderFields();renderPreview();});
 $('clearSelected').addEventListener('click',()=>{state.selected.clear();resetVerification();renderFields();renderPreview();});
 $('verifiedCheck').addEventListener('change',e=>{state.verified=e.target.checked;renderPreview();});
-$('copyButton').addEventListener('click',async()=>{if(!state.verified||state.demo||state.busy)return;const content=buildText();if(!content)return;try{await navigator.clipboard.writeText(content);toast('Texto copiado. Ya puedes pegarlo en la HC.');}catch{const node=document.createElement('textarea');node.value=content;document.body.appendChild(node);node.select();const okay=document.execCommand('copy');node.remove();toast(okay?'Texto copiado.':'No se ha podido copiar. Selecciona el texto manualmente.');}});
+$('copyButton').addEventListener('click',async()=>{if(!state.verified||noteHasDemo()||state.busy||noteMissingHeight())return;const content=buildText();if(!content)return;try{await navigator.clipboard.writeText(content);toast('Texto copiado. Ya puedes pegarlo en la HC.');}catch{const node=document.createElement('textarea');node.value=content;document.body.appendChild(node);node.select();const okay=document.execCommand('copy');node.remove();toast(okay?'Texto copiado.':'No se ha podido copiar. Selecciona el texto manualmente.');}});
 $('dropzone').addEventListener('click',()=>$('fileInput').click());$('dropzone').addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();$('fileInput').click();}});
 $('fileInput').addEventListener('change',e=>{if(e.target.files[0])loadPdf(e.target.files[0]);});
 for(const type of ['dragenter','dragover'])$('dropzone').addEventListener(type,e=>{e.preventDefault();e.stopPropagation();$('dropzone').classList.add('dragover');});
@@ -593,7 +868,7 @@ $('installApp').addEventListener('click',async()=>{
 });
 if('serviceWorker' in navigator){
   window.addEventListener('load',()=>{
-    navigator.serviceWorker.register('./sw.js').catch(()=>{
+    navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'}).then(registration=>registration.update()).catch(()=>{
       // The website still works online when browser policy blocks SWs.
     });
   });

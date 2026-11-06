@@ -1,7 +1,8 @@
 /* BioNota offline shell: only application assets, never patient PDFs or values. */
-const CACHE_NAME = 'bionota-static-v5-glass';
+const CACHE_NAME = 'bionota-static-v8-6ce09c454f0f';
+const RELEASE_ASSETS = ["./app.b40f30a6fe14.js","./styles.0bcaf4c8274a.css","./glass.548b35cd79ba.css"];
 const BASE_ASSETS = [
-  './', './index.html', './styles.css', './glass.css', './fonts/jakarta-regular.ttf', './fonts/jakarta-semibold.ttf', './fonts/jakarta-bold.ttf', './app.js', './manifest.webmanifest',
+  ...RELEASE_ASSETS, './', './index.html', './styles.css', './glass.css', './fonts/jakarta-regular.ttf', './fonts/jakarta-semibold.ttf', './fonts/jakarta-bold.ttf', './app.js', './manifest.webmanifest',
   './icons/bionota-192.png', './icons/bionota-512.png',
   './vendor/pdf.min.mjs', './vendor/pdf.worker.min.mjs', './vendor/map-compat.mjs',
   './vendor/tesseract.esm.min.js', './vendor/worker.min.js',
