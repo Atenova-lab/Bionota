@@ -1,6 +1,6 @@
 /* BioNota offline shell: only application assets, never patient PDFs or values. */
-const CACHE_NAME = 'bionota-static-v8-6a32613eec4a';
-const RELEASE_ASSETS = ["./app.7eea8e3df582.js","./styles.0bcaf4c8274a.css","./glass.548b35cd79ba.css"];
+const CACHE_NAME = 'bionota-static-v8-e92b7878debf';
+const RELEASE_ASSETS = ["./app.d664a9e33eb5.js","./styles.0bcaf4c8274a.css","./glass.548b35cd79ba.css"];
 const BASE_ASSETS = [
   ...RELEASE_ASSETS, './', './index.html', './styles.css', './glass.css', './fonts/jakarta-regular.ttf', './fonts/jakarta-semibold.ttf', './fonts/jakarta-bold.ttf', './app.js', './manifest.webmanifest',
   './icons/bionota-192.png', './icons/bionota-512.png',
@@ -21,10 +21,8 @@ const ALLOWED = new Set([...BASE_ASSETS,...OCR_ASSETS].map(path => new URL(path,
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE_NAME);
-    await cache.addAll(BASE_ASSETS);
-    // OCR files are large. If storage is limited the app remains installable,
-    // but OCR may need a connection the first time it is used.
-    try {await cache.addAll(OCR_ASSETS);} catch { /* Retry naturally when requested. */ }
+    await cache.addAll(BASE_ASSETS.map(asset => new Request(new URL(asset,self.registration.scope),{cache:'reload'})));
+    // OCR assets are cached on demand so large downloads do not delay updates.
     await self.skipWaiting();
   })());
 });
@@ -44,7 +42,7 @@ self.addEventListener('fetch', event => {
   if(url.origin !== self.location.origin)return;
 
   if(request.mode === 'navigate'){
-    event.respondWith(fetch(request).catch(async () => (await caches.match('./index.html')) || Response.error()));
+    event.respondWith(fetch(request,{cache:'no-store'}).catch(async () => (await caches.match('./index.html')) || Response.error()));
     return;
   }
   if(!ALLOWED.has(url.pathname))return;
