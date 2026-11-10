@@ -39,10 +39,11 @@ node tests/history.cjs
 
 Al cargar un informe Bodygram con la tabla «Análisis de composición corporal de la base de datos», se detectan sus filas y columnas y se leen sus mediciones automáticamente. La nota cambia a **Evolutivo**, incluye los parámetros históricos disponibles y los ordena por fecha y hora. Dos mediciones del mismo día se conservan si tienen horas diferentes.
 
-Los valores se escriben por parámetro con flechas: `SMI: 6,9 → 7 → 8,1 kg/m²`. Los parámetros presentes únicamente en el resultado actual aparecen como valores únicos. Los datos ausentes o dudosos no se completan ni se desplazan a otra fecha. La lectura de celdas dudosas se repite conservando su posición; las relaciones impresas ayudan a comprobar decimales, sin inventar valores.
+Los valores se escriben por parámetro con flechas: `SMI: 6,9 --> 7 --> 8,1 kg/m²`. Los parámetros presentes únicamente en el resultado actual aparecen como valores únicos. Los datos ausentes o dudosos no se completan ni se desplazan a otra fecha. La lectura de celdas dudosas se repite conservando su posición; las relaciones impresas ayudan a comprobar decimales, sin inventar valores.
 
 Se pueden editar y eliminar mediciones. La entrada manual queda como opción secundaria. Los registros viven solo en memoria; no se guardan al recargar o cerrar. Cargar un nuevo PDF sustituye el histórico anterior para no mezclar pacientes. El PDF de prueba y sus datos no forman parte del repositorio.
 
 ## Preparación de versiones
 
 Ejecuta `node scripts/prepare-release.cjs` tras editar el código y antes de publicar. Genera nombres por contenido para JavaScript y CSS y los referencia desde el HTML y la caché offline. Así una instalación controlada por un service worker antiguo recibe los archivos de la nueva versión en su primera carga online, sin mezclar HTML nuevo con JavaScript anterior.
+

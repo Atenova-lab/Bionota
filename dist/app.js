@@ -154,7 +154,7 @@ function evolutionField(f){
   const derived=records.some(r=>r.derived.includes(f.id))?' (incluye calculados)':'';
   const unit=f.id==='bcm'?'kg/m':f.unit;
   const cutoff=state.includeCutoffs?referenceFor(f.id,state.sex):null;
-  return `${label}${derived}: ${values.join(' → ')}${unit?' '+unit:''}${cutoff?` (corte: ${cutoff})`:''}`;
+  return `${label}${derived}: ${values.join(' --> ')}${unit?' '+unit:''}${cutoff?` (corte: ${cutoff})`:''}`;
 }
 function noteHasDemo(){return state.noteMode==='evolution'?state.measurements.some(r=>r.demo):state.demo;}
 function noteMissingHeight(){
@@ -873,3 +873,4 @@ if('serviceWorker' in navigator){
     });
   });
 }
+
