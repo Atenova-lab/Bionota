@@ -130,7 +130,7 @@ function humanField(f,v,values=state.values,derived=state.derivedFields){
   const converted=f.id==='bcm'?bcmByHeight(values):formatDecimal(v);
   if(converted===null)return null;
   const label=f.id==='bcm'?'BCM/h':(f.short||f.name)+(derived.has(f.id)?' (calculado)':'');
-  const unit=f.id==='bcm'?'kg/m':f.unit;
+  const unit=f.id==='bcm'?'kg/m':f.unit==='Ω'?'ohmios':f.unit;
   const cutoff=state.includeCutoffs?referenceFor(f.id,state.sex):null;
   return `${label}${cutoff?` (corte: ${cutoff})`:''}: ${converted}${unit?' '+unit:''}`;
 }
@@ -152,7 +152,7 @@ function evolutionField(f){
   if(!values.length){const current=Object.keys(state.historyReportValues).length?state.historyReportValues:state.values;return hasValue(current,f.id)?humanField(f,current[f.id],current,state.historyReportDerived):null;}
   const label=f.id==='bcm'?'BCM/h':(f.short||f.name);
   const derived=records.some(r=>r.derived.includes(f.id))?' (incluye calculados)':'';
-  const unit=f.id==='bcm'?'kg/m':f.unit;
+  const unit=f.id==='bcm'?'kg/m':f.unit==='Ω'?'ohmios':f.unit;
   const cutoff=state.includeCutoffs?referenceFor(f.id,state.sex):null;
   return `${label}${derived}: ${values.join(' --> ')}${unit?' '+unit:''}${cutoff?` (corte: ${cutoff})`:''}`;
 }
