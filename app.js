@@ -64,6 +64,7 @@ const state = { historyIssues:[], historyReportValues:{}, historyReportDerived:n
 
 const $ = id => document.getElementById(id);
 const fieldById = id => FIELDS.find(f => f.id === id);
+const displayUnit = f => f.unit==='Ω'?'ohmios':f.unit;
 const allTemplates = () => [...BUILTINS.map(t=>state.overrides[t.id]?{...t,...state.overrides[t.id]}:t), ...state.custom];
 const escapeHtml = s => String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
@@ -98,7 +99,7 @@ function renderFields(){
   for(const category of CATEGORIES){const fields=FIELDS.filter(f=>f.cat===category.id&&(f.name.toLocaleLowerCase('es').includes(search)||(f.short||'').toLowerCase().includes(search)));
     if(!fields.length)continue;
     html+=`<div class="field-group"><div class="field-group-header"><h3>${category.name}</h3><span>${fields.filter(f=>state.values[f.id]!=null&&state.values[f.id]!=='').length} con valor</span></div>`;
-    for(const f of fields){const v=state.values[f.id]??'';html+=`<div class="field-row ${v===''?'not-found':''}"><input class="field-check" type="checkbox" data-field-check="${f.id}" ${state.selected.has(f.id)?'checked':''} aria-label="Seleccionar ${escapeHtml(f.name)} ${escapeHtml(f.unit)}"/><label class="field-name" for="value-${f.id}">${escapeHtml(f.name)}${f.short?`<small>${escapeHtml(f.short)}${f.id==='bcm'?' · en HC: BCM/h':''}</small>`:''}</label><input class="field-value" id="value-${f.id}" data-field-value="${f.id}" value="${escapeHtml(v)}" placeholder="—" inputmode="decimal" aria-label="Valor de ${escapeHtml(f.name)} en ${escapeHtml(f.unit)}"/><span class="field-unit">${escapeHtml(f.unit)}</span></div>`;}
+    for(const f of fields){const v=state.values[f.id]??'';html+=`<div class="field-row ${v===''?'not-found':''}"><input class="field-check" type="checkbox" data-field-check="${f.id}" ${state.selected.has(f.id)?'checked':''} aria-label="Seleccionar ${escapeHtml(f.name)} ${escapeHtml(displayUnit(f))}"/><label class="field-name" for="value-${f.id}">${escapeHtml(f.name)}${f.short?`<small>${escapeHtml(f.short)}${f.id==='bcm'?' · en HC: BCM/h':''}</small>`:''}</label><input class="field-value" id="value-${f.id}" data-field-value="${f.id}" value="${escapeHtml(v)}" placeholder="—" inputmode="decimal" aria-label="Valor de ${escapeHtml(f.name)} en ${escapeHtml(displayUnit(f))}"/><span class="field-unit">${escapeHtml(displayUnit(f))}</span></div>`;}
     html+='</div>';
   }
   $('fieldsContainer').innerHTML=html||'<p class="status-note">No hay parámetros con ese nombre.</p>';
@@ -185,7 +186,7 @@ function renderMeasurements(){
   $('measurementHint').textContent=state.editingMeasurementId?'Corrige los valores o la fecha y pulsa «Actualizar medición».':state.measurements.length?'Las mediciones se han ordenado por fecha y hora. Puedes revisarlas o corregirlas.':'El evolutivo se detectará automáticamente si el PDF contiene una tabla histórica.';
   document.querySelectorAll('[data-note-mode]').forEach(b=>{b.disabled=state.busy;const active=b.dataset.noteMode===state.noteMode;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));});
   $('evolutionCaption').hidden=state.noteMode!=='evolution';
-  if(state.noteMode==='evolution')$('evolutionCaption').textContent=state.measurements.length?`Orden cronológico: ${sortedMeasurements().map(r=>r.date.split('-').reverse().join('/')+(r.time?' '+r.time:'')).join(' → ')}. Cada parámetro muestra solo sus valores disponibles.`:(state.file?'No se ha podido leer una tabla histórica en este PDF. Revisa el mensaje bajo el archivo.':'Carga un PDF con tabla histórica: el evolutivo se detecta automáticamente.');
+  if(state.noteMode==='evolution')$('evolutionCaption').textContent=state.measurements.length?`Orden cronológico: ${sortedMeasurements().map(r=>r.date.split('-').reverse().join('/')+(r.time?' '+r.time:'')).join(' --> ')}. Cada parámetro muestra solo sus valores disponibles.`:(state.file?'No se ha podido leer una tabla histórica en este PDF. Revisa el mensaje bajo el archivo.':'Carga un PDF con tabla histórica: el evolutivo se detecta automáticamente.');
 }
 function addMeasurement(){
   if(state.busy)return;
@@ -222,7 +223,7 @@ function renderModalFields(){
   const search=state.templateSearch.trim().toLocaleLowerCase('es');let html='';
   for(const category of CATEGORIES){const list=FIELDS.filter(f=>f.cat===category.id&&(!search||`${f.name} ${f.short||''} ${f.unit}`.toLocaleLowerCase('es').includes(search)));if(!list.length)continue;
     html+=`<div class="template-field-group"><div class="template-field-group-heading"><b>${escapeHtml(category.name)}</b><span>${list.filter(f=>state.templateDraftFields.has(f.id)).length} de ${list.length}</span></div>`;
-    for(const f of list){html+=`<label class="template-field-option"><input type="checkbox" data-template-field="${f.id}" ${state.templateDraftFields.has(f.id)?'checked':''}/><span>${escapeHtml(f.short||f.name)}<small>${escapeHtml(f.short?f.name:f.unit)}</small></span><span class="template-field-unit">${escapeHtml(f.unit)}</span></label>`;}
+    for(const f of list){html+=`<label class="template-field-option"><input type="checkbox" data-template-field="${f.id}" ${state.templateDraftFields.has(f.id)?'checked':''}/><span>${escapeHtml(f.short||f.name)}<small>${escapeHtml(f.short?f.name:displayUnit(f))}</small></span><span class="template-field-unit">${escapeHtml(displayUnit(f))}</span></label>`;}
     html+='</div>';
   }
   $('templateFields').innerHTML=html||'<p class="template-empty">No hay parámetros que coincidan con la búsqueda.</p>';
