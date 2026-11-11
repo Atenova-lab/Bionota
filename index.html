@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="utf-8" />
-  <meta name="bionota-version" content="1.8" />
+  <meta name="bionota-version" content="1.9" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta name="theme-color" content="#187da8" />
   <meta name="description" content="Convierte informes PDF de Bodygram HBO en notas clínicas estructuradas y personalizables para la historia clínica." />
@@ -47,7 +47,7 @@
       </nav>
       <div class="sidebar-bottom">
         <div class="secure-card"><span class="secure-icon"><svg><use href="#i-shield"/></svg></span><b>Privacidad por diseño</b><p>Los informes se procesan en este dispositivo. No guardamos documentos ni datos clínicos.</p></div>
-        <div class="sidebar-credit">Herramienta de apoyo documental <span>·</span> v1.8</div>
+        <div class="sidebar-credit">Herramienta de apoyo documental <span>·</span> v1.9</div>
       </div>
     </aside>
     <main class="main">
@@ -76,7 +76,7 @@
               <section class="panel evolution-panel" aria-labelledby="evolutionTitle">
                 <div class="panel-header"><div><span class="section-number">SEGUIMIENTO</span><h2 id="evolutionTitle">Mediciones del PDF</h2><p>El histórico se lee automáticamente y se ordena por fecha y hora.</p></div><span class="soft-pill" id="measurementCount">0 visitas</span></div>
                 <details class="manual-measurement" id="manualMeasurement"><summary>Añadir o corregir una medición manualmente</summary><div class="measurement-actions"><label class="measurement-date-label" for="measurementDate">Fecha de la medición<input class="form-input" type="date" id="measurementDate" /></label><label class="measurement-date-label" for="measurementTime">Hora (opcional)<input class="form-input" type="time" id="measurementTime" /></label><button class="secondary-button" type="button" id="addMeasurement"><svg><use href="#i-plus"/></svg> Añadir a evolución</button></div></details>
-                <p class="measurement-hint" id="measurementHint">El evolutivo se detectará automáticamente si el PDF contiene una tabla histórica.</p>
+                <p class="measurement-hint" id="measurementHint" aria-live="polite">El evolutivo se detectará automáticamente si el PDF contiene una tabla histórica.</p>
                 <ol class="measurement-list" id="measurementList" aria-label="Mediciones de la evolución"></ol>
                 <div class="measurement-footer"><span>Solo mediciones del mismo paciente. No se guardan al cerrar.</span><button class="text-action" type="button" id="clearMeasurements" disabled>Vaciar evolución</button></div>
               </section>
@@ -121,7 +121,7 @@
     </div>
   </div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./app.d664a9e33eb5.js"></script>
+  <script type="module" src="./app.89e2bdfdb748.js"></script>
 </body>
 </html>
 

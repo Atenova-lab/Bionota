@@ -1,6 +1,7 @@
 /* BioNota offline shell: only application assets, never patient PDFs or values. */
-const CACHE_NAME = 'bionota-static-v8-e92b7878debf';
-const RELEASE_ASSETS = ["./app.d664a9e33eb5.js","./styles.0bcaf4c8274a.css","./glass.548b35cd79ba.css"];
+const CACHE_NAME = 'bionota-static-v8-a66f04826c0c';
+const OCR_CACHE_NAME = 'bionota-ocr-v1';
+const RELEASE_ASSETS = ["./app.89e2bdfdb748.js","./styles.0bcaf4c8274a.css","./glass.548b35cd79ba.css"];
 const BASE_ASSETS = [
   ...RELEASE_ASSETS, './', './index.html', './styles.css', './glass.css', './fonts/jakarta-regular.ttf', './fonts/jakarta-semibold.ttf', './fonts/jakarta-bold.ttf', './app.js', './manifest.webmanifest',
   './icons/bionota-192.png', './icons/bionota-512.png',
@@ -17,12 +18,28 @@ const OCR_ASSETS = [
   './vendor/tess-core/tesseract-core-relaxedsimd-lstm.wasm.js',
 ];
 const ALLOWED = new Set([...BASE_ASSETS,...OCR_ASSETS].map(path => new URL(path,self.registration.scope).pathname));
+const OCR_PATHS = new Set(OCR_ASSETS.map(path => new URL(path,self.registration.scope).pathname));
+let ocrPreparation;
+
+async function prepareOcr(){
+  const cache=await caches.open(OCR_CACHE_NAME);
+  for(const asset of OCR_ASSETS){
+    const url=new URL(asset,self.registration.scope).href;
+    if(!await cache.match(url,{ignoreSearch:true}))await cache.add(url).catch(()=>{});
+  }
+}
+
+self.addEventListener('message',event=>{
+  if(event.data!=='bionota:prepare-ocr')return;
+  ocrPreparation??=prepareOcr().catch(()=>{}).finally(()=>{ocrPreparation=null;});
+  event.waitUntil(ocrPreparation);
+});
 
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE_NAME);
     await cache.addAll(BASE_ASSETS.map(asset => new Request(new URL(asset,self.registration.scope),{cache:'reload'})));
-    // OCR assets are cached on demand so large downloads do not delay updates.
+    // The app prepares OCR after activation, without delaying the new shell.
     await self.skipWaiting();
   })());
 });
@@ -47,13 +64,12 @@ self.addEventListener('fetch', event => {
   }
   if(!ALLOWED.has(url.pathname))return;
   event.respondWith((async () => {
-    const cached = await caches.match(request,{ignoreSearch:true});
+    const cacheName=OCR_PATHS.has(url.pathname)?OCR_CACHE_NAME:CACHE_NAME;
+    const cache=await caches.open(cacheName).catch(()=>null);
+    const cached=await cache?.match(request,{ignoreSearch:true}).catch(()=>null);
     if(cached)return cached;
     const response = await fetch(request);
-    if(response.ok){
-      const cache = await caches.open(CACHE_NAME);
-      await cache.put(request,response.clone());
-    }
+    if(cache&&response.status===200)await cache.put(request,response.clone()).catch(()=>{});
     return response;
   })());
 });
