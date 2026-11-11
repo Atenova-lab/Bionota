@@ -23,13 +23,28 @@ const root=path.join(__dirname,'../dist');
   handlers.fetch({request:{method:'GET',url:scope,mode:'navigate'},respondWith:p=>{task=p;}});
   assert.equal(await task,offline,'offline launch must retain the cached shell');
 
+  const ocrFiles=new Set();
+  context.caches.open=async name=>{
+    assert.equal(name,'bionota-ocr-v1','OCR files must survive updates to the app shell');
+    return {match:async url=>ocrFiles.has(url),add:async url=>{ocrFiles.add(url);}};
+  };
+  handlers.message({data:'bionota:prepare-ocr',waitUntil:p=>{task=p;}});await task;
+  assert.ok(ocrFiles.has(scope+'vendor/lang/eng.traineddata'));
+  assert.ok(ocrFiles.has(scope+'vendor/tess-core/tesseract-core-simd-lstm.wasm'));
+  const ocrRequest={method:'GET',url:scope+'vendor/lang/eng.traineddata',mode:'cors'};
+  context.caches.open=async()=>({match:async()=>null,put:async()=>{throw Error('cache quota exceeded');}});
+  const networkResponse=new Response('OCR asset');
+  context.fetch=async()=>networkResponse;
+  handlers.fetch({request:ocrRequest,respondWith:p=>{task=p;}});
+  assert.equal(await task,networkResponse,'cache write errors must not block OCR downloads');
+
   const html=fs.readFileSync(path.join(root,'actualizar.html'),'utf8');
   const script=html.match(/<script>([\s\S]*?)<\/script>/)[1];
   const button={disabled:false,addEventListener:(name,fn)=>{button.click=fn;}},status={};
   const removed=[],unregistered=[];let destination;
   const recovery={URL,Date,Promise,Error,document:{getElementById:id=>id==='update'?button:status},
     location:{href:scope+'actualizar.html',replace:url=>{destination=url;}},window:{caches:{}},
-    fetch:async()=>({ok:true,text:async()=>'<meta name="bionota-version" content="1.8" />'}),
+    fetch:async()=>({ok:true,text:async()=>'<meta name="bionota-version" content="1.9" />'}),
     navigator:{serviceWorker:{getRegistrations:async()=>[
       {scope,unregister:async()=>{unregistered.push(scope);}},
       {scope:'https://atenova-lab.github.io/ENDOTURNOS-WEB/',unregister:async()=>{throw Error('unrelated app touched');}},
@@ -37,7 +52,7 @@ const root=path.join(__dirname,'../dist');
   };
   vm.runInNewContext(script,recovery);await button.click();
   assert.deepEqual(unregistered,[scope]);assert.deepEqual(removed,['bionota-static-old','bionota-static-new']);
-  assert.equal(new URL(destination).pathname,'/Bionota/');assert.equal(new URL(destination).searchParams.get('version'),'1.8');
+  assert.equal(new URL(destination).pathname,'/Bionota/');assert.equal(new URL(destination).searchParams.get('version'),'1.9');
   assert.doesNotMatch(script,/localStorage|indexedDB/,'saved templates must remain untouched');
   removed.length=0;unregistered.length=0;destination=undefined;
   recovery.fetch=async()=>{throw Error('offline');};

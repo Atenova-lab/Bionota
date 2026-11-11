@@ -60,7 +60,7 @@ const BUILTINS = [
 ];
 const STORE_KEY = 'bionota_templates_v1';
 const OVERRIDES_KEY = 'bionota_builtin_overrides_v1';
-const state = { historyIssues:[], historyReportValues:{}, historyReportDerived:new Set(), values:{}, derivedFields:new Set(), selected:new Set(BUILTINS[0].fields), templateId:'general', format:'compact', noteMode:'current', measurements:[], editingMeasurementId:null, measurementSequence:0, includeCutoffs:true, sex:'all', custom:readTemplates(), overrides:readOverrides(), rawText:'', source:'', file:null, fileUrl:null, pdfBytes:null, demo:false, verified:false, busy:false, editingTemplateId:null, templateDraftFields:new Set(), templateSearch:'' };
+const state = { historyStatus:'idle', historyIssues:[], historyReportValues:{}, historyReportDerived:new Set(), values:{}, derivedFields:new Set(), selected:new Set(BUILTINS[0].fields), templateId:'general', format:'compact', noteMode:'current', measurements:[], editingMeasurementId:null, measurementSequence:0, includeCutoffs:true, sex:'all', custom:readTemplates(), overrides:readOverrides(), rawText:'', source:'', file:null, fileUrl:null, pdfBytes:null, demo:false, verified:false, busy:false, editingTemplateId:null, templateDraftFields:new Set(), templateSearch:'' };
 
 const $ = id => document.getElementById(id);
 const fieldById = id => FIELDS.find(f => f.id === id);
@@ -183,7 +183,16 @@ function renderMeasurements(){
   $('addMeasurement').disabled=state.busy||!Object.keys(state.values).some(id=>hasValue(state.values,id));
   $('addMeasurement').innerHTML=`<svg><use href="#i-${state.editingMeasurementId?'check':'plus'}"/></svg> ${state.editingMeasurementId?'Actualizar medición':'Añadir a evolución'}`;
   $('measurementDate').disabled=state.busy;
-  $('measurementHint').textContent=state.editingMeasurementId?'Corrige los valores o la fecha y pulsa «Actualizar medición».':state.measurements.length?'Las mediciones se han ordenado por fecha y hora. Puedes revisarlas o corregirlas.':'El evolutivo se detectará automáticamente si el PDF contiene una tabla histórica.';
+  const historyHints={
+    missing:'No se ha detectado una tabla histórica. Comprueba que el PDF incluya «Análisis de composición corporal de la base de datos».',
+    unreadable:'No se han podido leer las mediciones anteriores. Si el PDF incluye la tabla histórica, pulsa «Reintentar con OCR».',
+  };
+  let hint='El evolutivo se detectará automáticamente si el PDF contiene una tabla histórica.';
+  if(state.busy)hint='Buscando y leyendo el evolutivo del PDF…';
+  else if(state.editingMeasurementId)hint='Corrige los valores o la fecha y pulsa «Actualizar medición».';
+  else if(state.measurements.length)hint='Las mediciones se han ordenado por fecha y hora. Puedes revisarlas o corregirlas.';
+  else if(state.file&&historyHints[state.historyStatus])hint=historyHints[state.historyStatus];
+  $('measurementHint').textContent=hint;
   document.querySelectorAll('[data-note-mode]').forEach(b=>{b.disabled=state.busy;const active=b.dataset.noteMode===state.noteMode;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));});
   $('evolutionCaption').hidden=state.noteMode!=='evolution';
   if(state.noteMode==='evolution')$('evolutionCaption').textContent=state.measurements.length?`Orden cronológico: ${sortedMeasurements().map(r=>r.date.split('-').reverse().join('/')+(r.time?' '+r.time:'')).join(' --> ')}. Cada parámetro muestra solo sus valores disponibles.`:(state.file?'No se ha podido leer una tabla histórica en este PDF. Revisa el mensaje bajo el archivo.':'Carga un PDF con tabla histórica: el evolutivo se detecta automáticamente.');
@@ -208,7 +217,7 @@ function editMeasurement(id){
   $('manualMeasurement').open=true;$('measurementDate').focus();
 }
 function renderPreview(){
-  const note=buildText();const preview=$('previewContent');preview.textContent=state.busy?'Leyendo el PDF y buscando las mediciones anteriores. El evolutivo aparecerá automáticamente al terminar.':note||(state.noteMode==='evolution'?'Carga un PDF con tabla histórica para generar automáticamente la nota evolutiva.':'Todavía no hay datos disponibles para los parámetros seleccionados. Carga un PDF, corrige los valores o prueba el ejemplo ficticio.');preview.classList.toggle('has-content',!!note&&!state.busy);$('previewCharCount').textContent=`${note.length} caracteres`;
+  const note=buildText();const preview=$('previewContent');preview.textContent=state.busy?'Leyendo el PDF y buscando las mediciones anteriores. Si hay un histórico legible, aparecerá aquí.':note||(state.noteMode==='evolution'?'Carga un PDF con tabla histórica para generar automáticamente la nota evolutiva.':'Todavía no hay datos disponibles para los parámetros seleccionados. Carga un PDF, corrige los valores o prueba el ejemplo ficticio.');preview.classList.toggle('has-content',!!note&&!state.busy);$('previewCharCount').textContent=`${note.length} caracteres`;
   const missingHeight=noteMissingHeight();
   $('calcWarning').hidden=!missingHeight;
   $('copyButton').disabled=!note||!state.verified||noteHasDemo()||state.busy||missingHeight;
@@ -610,6 +619,8 @@ function installHistory(result){
   state.historyReportValues={...state.values};state.historyReportDerived=new Set(state.derivedFields);
   state.measurements=result.records.map(r=>({...r,id:String(++state.measurementSequence),sex:state.sex,demo:false}));
   state.historyIssues=result.issues;state.editingMeasurementId=null;
+  if(result.records.length)state.historyStatus='ready';
+  else state.historyStatus=result.failed||result.tableDetected?'unreadable':'missing';
   if(state.measurements.length){
     state.noteMode='evolution';
     // Every available historical parameter is initially included. The user
@@ -688,7 +699,7 @@ function historyImage(canvas,grid,column=null,rowOnly=null){
 }
 async function recognizeHistory(doc,existingWorker=null){
   let worker=existingWorker,owned=false;
-  const combined={records:[],issues:[]};
+  const combined={records:[],issues:[],tableDetected:false};
   try{
     for(let pageNumber=doc.numPages;pageNumber>=Math.max(1,doc.numPages-3);pageNumber--){
       showStatus(`Buscando mediciones anteriores en la página ${pageNumber} de ${doc.numPages}...`);
@@ -702,6 +713,7 @@ async function recognizeHistory(doc,existingWorker=null){
         const header=hboCrop(canvas,grid.xs[0]/canvas.width,grid.headerTop/canvas.height,grid.xs.at(-1)/canvas.width,grid.headerBottom/canvas.height);
         let heading='';try{heading=norm((await worker.recognize(header)).data.text);}finally{header.width=header.height=0;}
         if(!/fecha/.test(heading)||!/(ffmi|fmi)/.test(heading)||!/janssen/.test(heading)||!/tbw/.test(heading))continue;
+        combined.tableDetected=true;
         await worker.setParameters({tessedit_pageseg_mode:'6',tessedit_char_whitelist:'0123456789.,:/-'});
         const image=historyImage(canvas,grid);let full;
         try{const result=await worker.recognize(image.canvas,{}, {tsv:true,text:true});full=tsvCells(result.data.tsv,image.xs,image.bandHeight,grid.rowCount);}finally{image.canvas.width=image.canvas.height=0;}
@@ -746,10 +758,19 @@ async function recognizeHistory(doc,existingWorker=null){
   }
 }
 
+async function readPdfHistory(doc,worker){
+  try{
+    return await recognizeHistory(doc,worker);
+  }catch(error){
+    console.error('Error leyendo el evolutivo',error);
+    return {records:[],issues:[],failed:true};
+  }
+}
+
 async function loadPdf(file){
   if(!file||(!/\.pdf$/i.test(file.name)&&file.type!=='application/pdf')){toast('Selecciona un archivo PDF.');return;}
   if(file.size>25*1024*1024){toast('El PDF supera los 25 MB permitidos.');return;}
-  state.measurements=[];state.historyIssues=[];state.historyReportValues={};state.historyReportDerived=new Set();state.noteMode='current';state.editingMeasurementId=null;$('measurementDate').value='';$('measurementTime').value='';setBusy(true);state.sex='all';$('sexSelect').value='all';if(state.fileUrl)URL.revokeObjectURL(state.fileUrl);state.file=file;state.fileUrl=URL.createObjectURL(file);state.demo=false;state.pdfBytes=null;state.rawText='';setValues({},'');$('fileSummary').hidden=false;$('fileName').textContent=file.name;$('fileInfo').textContent=`${(file.size/1024/1024).toFixed(2).replace('.',',')} MB · abriendo...`;
+  state.measurements=[];state.historyStatus='idle';state.historyIssues=[];state.historyReportValues={};state.historyReportDerived=new Set();state.noteMode='current';state.editingMeasurementId=null;$('measurementDate').value='';$('measurementTime').value='';setBusy(true);state.sex='all';$('sexSelect').value='all';if(state.fileUrl)URL.revokeObjectURL(state.fileUrl);state.file=file;state.fileUrl=URL.createObjectURL(file);state.demo=false;state.pdfBytes=null;state.rawText='';setValues({},'');$('fileSummary').hidden=false;$('fileName').textContent=file.name;$('fileInfo').textContent=`${(file.size/1024/1024).toFixed(2).replace('.',',')} MB · abriendo...`;
   try{
     showStatus('Abriendo PDF y buscando texto reconocible...');
     state.pdfBytes=new Uint8Array(await file.arrayBuffer());
@@ -757,7 +778,7 @@ async function loadPdf(file){
     const pages=Math.min(doc.numPages,12);const chunks=[];
     for(let i=1;i<=pages;i++){showStatus(`Leyendo texto de la página ${i} de ${pages}...`);const page=await doc.getPage(i);const content=await page.getTextContent();chunks.push(extractLinesFromItems(content.items));}
     state.rawText=chunks.join('\n');let found=parseReport(state.rawText);$('fileInfo').textContent=`${doc.numPages} página${doc.numPages===1?'':'s'} · ${Object.keys(found).length} datos identificados`;
-    if(Object.keys(found).length>=3){setValues(found,'pdf');const history=await recognizeHistory(doc);installHistory(history);showStatus(history.records.length?`Evolutivo detectado automáticamente: ${history.records.length} mediciones. ${history.issues.length?(history.issues.length===1?'1 valor dudoso omitido. ':history.issues.length+' valores dudosos omitidos. '):''}Revisa los datos antes de copiarlos.`:`Texto extraído. Se han identificado ${Object.keys(found).length} parámetros. Comprueba que coinciden con el informe.`, 'success');}
+    if(Object.keys(found).length>=3){setValues(found,'pdf');const history=await readPdfHistory(doc);installHistory(history);showStatus(history.records.length?`Evolutivo detectado automáticamente: ${history.records.length} mediciones. ${history.issues.length?(history.issues.length===1?'1 valor dudoso omitido. ':history.issues.length+' valores dudosos omitidos. '):''}Revisa los datos antes de copiarlos.`:`Texto extraído. Se han identificado ${Object.keys(found).length} parámetros. Comprueba que coinciden con el informe.`, 'success');}
     else{setValues(found,'pdf');showStatus('No se han localizado suficientes parámetros en el texto. Iniciando OCR local...');await runOcr(doc,true);}
   }catch(err){console.error('Error leyendo PDF',err);showStatus(`No se ha podido procesar este PDF (${err.message||'error de lectura'}). Prueba con otro informe.`, 'error');}
   finally{setBusy(false);renderPreview();}
@@ -773,7 +794,7 @@ async function runOcr(existingDoc=null,automatic=false){
     if(specialized){
       if(specialized.sex){state.sex=specialized.sex;$('sexSelect').value=state.sex;}
       setValues(specialized.values,'ocr-bodygram',{derived:specialized.derived});
-      const history=await recognizeHistory(doc,worker);installHistory(history);
+      const history=await readPdfHistory(doc,worker);installHistory(history);
       const count=Object.keys(specialized.values).length;
       $('fileInfo').textContent=`${doc.numPages} páginas · ${count} parámetros leídos en las columnas «resultado»`;
       const issueNames=specialized.needsReview.map(id=>fieldById(id)?.short||fieldById(id)?.name||id);
@@ -787,12 +808,12 @@ async function runOcr(existingDoc=null,automatic=false){
     await worker.setParameters({tessedit_pageseg_mode:'3'});
     const pages=Math.min(doc.numPages,12);let text='';
     for(let i=1;i<=pages;i++){showStatus(`Aplicando OCR a la página ${i} de ${pages}...`);const page=await doc.getPage(i);const viewport=page.getViewport({scale:2.0});const canvas=document.createElement('canvas');canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);await page.render({canvasContext:canvas.getContext('2d',{willReadFrequently:true}),viewport}).promise;const result=await worker.recognize(canvas);text+='\n'+result.data.text;canvas.width=canvas.height=0;}
-    state.rawText+=(state.rawText?'\n':'')+text;const found=parseReport(state.rawText);setValues(found,'ocr');const history=await recognizeHistory(doc,worker);installHistory(history);$('fileInfo').textContent=`${doc.numPages} página${doc.numPages===1?'':'s'} · ${Object.keys(found).length} datos identificados (OCR)`;
+    state.rawText+=(state.rawText?'\n':'')+text;const found=parseReport(state.rawText);setValues(found,'ocr');const history=await readPdfHistory(doc,worker);installHistory(history);$('fileInfo').textContent=`${doc.numPages} página${doc.numPages===1?'':'s'} · ${Object.keys(found).length} datos identificados (OCR)`;
     showStatus(history.records.length?`Evolutivo detectado automáticamente: ${history.records.length} mediciones. Revisa los datos antes de copiar.`:Object.keys(found).length?`OCR terminado: ${Object.keys(found).length} valores candidatos. Es imprescindible revisarlos y corregirlos si procede.`:'El OCR ha finalizado, pero no ha identificado campos con suficiente seguridad. Puedes introducir los valores manualmente.',Object.keys(found).length?'success':'error');
-  }catch(err){console.error('Error OCR',err);showStatus(`No se ha podido completar el OCR local (${err.message||'error'}). Puedes introducir los datos manualmente.`, 'error');if(!automatic)toast('Error al ejecutar OCR.');}
+  }catch(err){state.historyStatus='unreadable';console.error('Error OCR',err);showStatus(`No se ha podido completar el OCR local (${err.message||'error'}). Puedes introducir los datos manualmente.`, 'error');if(!automatic)toast('Error al ejecutar OCR.');}
   finally{if(worker)await worker.terminate().catch(()=>{});setBusy(false);renderPreview();}
 }
-function clearFile(){state.editingMeasurementId=null;$('measurementDate').value='';$('measurementTime').value='';if(state.fileUrl)URL.revokeObjectURL(state.fileUrl);state.fileUrl=null;state.file=null;state.pdfBytes=null;state.rawText='';state.demo=false;state.sex='all';$('sexSelect').value='all';$('fileSummary').hidden=true;$('fileInput').value='';setValues({},'');setBusy(false);showStatus('Los PDF escaneados se leerán mediante reconocimiento óptico de caracteres (OCR).');}
+function clearFile(){state.historyStatus='idle';state.editingMeasurementId=null;$('measurementDate').value='';$('measurementTime').value='';if(state.fileUrl)URL.revokeObjectURL(state.fileUrl);state.fileUrl=null;state.file=null;state.pdfBytes=null;state.rawText='';state.demo=false;state.sex='all';$('sexSelect').value='all';$('fileSummary').hidden=true;$('fileInput').value='';setValues({},'');setBusy(false);showStatus('Los PDF escaneados se leerán mediante reconocimiento óptico de caracteres (OCR).');}
 function loadDemo(){clearFile();state.demo=true;setValues({weight:'68,4',height:'162',bmi:'26,1',waist:'86',calf:'34',resistance:'548',reactance:'58',phase:'6,0',spa:'-0,8',fm:'20,7',fm_pct:'30,3',ffm:'47,7',ffmi:'18,2',fmi:'7,9',bcm:'25,6',mm:'24,1',smm:'22,5',smi:'8,6',tbw:'34,8',hydration:'73,0',ecw:'14,5',icw:'20,3',ecw_tbw:'41,7'},'demo');showStatus('Datos de demostración inventados. No deben incorporarse a ninguna historia clínica.', 'success');toast('Ejemplo ficticio cargado.');}
 
 document.querySelectorAll('[data-note-mode]').forEach(b=>b.addEventListener('click',()=>{state.noteMode=b.dataset.noteMode;resetVerification();renderPreview();}));
@@ -868,8 +889,15 @@ $('installApp').addEventListener('click',async()=>{
   }else $('installHelp').hidden=!$('installHelp').hidden;
 });
 if('serviceWorker' in navigator){
+  const prepareOcr=()=>navigator.serviceWorker.ready
+    .then(registration=>registration.active?.postMessage('bionota:prepare-ocr'))
+    .catch(()=>{});
+  navigator.serviceWorker.addEventListener('controllerchange',prepareOcr);
   window.addEventListener('load',()=>{
-    navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'}).then(registration=>registration.update()).catch(()=>{
+    navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'}).then(registration=>{
+      prepareOcr();
+      return registration.update();
+    }).catch(()=>{
       // The website still works online when browser policy blocks SWs.
     });
   });
