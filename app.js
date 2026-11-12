@@ -12,10 +12,12 @@ const CATEGORIES = [
 // They are candidates, never unquestioned clinical truth: all results require review.
 const FIELDS = [
   { id:'weight', cat:'anthro', name:'Peso', unit:'kg', aliases:['peso','weight','peso corporeo'], min:10, max:450 },
+  { id:'usual_weight', cat:'anthro', name:'Peso habitual', unit:'kg', aliases:[], min:10, max:450 },
+  { id:'weight_loss_pct', cat:'anthro', name:'Pérdida de peso', short:'%PP', unit:'%', aliases:[], min:-100, max:100 },
   { id:'height', cat:'anthro', name:'Talla', unit:'cm', aliases:['talla','altura','height','stature','altezza'], min:90, max:240 },
   { id:'bmi', cat:'anthro', name:'Índice de masa corporal', short:'IMC', unit:'kg/m²', aliases:['imc','bmi','body mass index','indice de masa corporea','indice di massa corporea'], min:9, max:90 },
   { id:'waist', cat:'anthro', name:'Perímetro de cintura', unit:'cm', aliases:['perimetro de cintura','circunferencia de cintura','waist circumference','circonferenza vita'], min:30, max:240 },
-  { id:'calf', cat:'anthro', name:'Circunferencia de pantorrilla', unit:'cm', aliases:['circunferencia de pantorrilla','perimetro de pantorrilla','calf circumference','circonferenza polpaccio'], min:15, max:85 },
+  { id:'calf', cat:'anthro', name:'Circunferencia de pantorrilla', short:'CP', unit:'cm', aliases:['circunferencia de pantorrilla','perimetro de pantorrilla','calf circumference','circonferenza polpaccio'], min:15, max:85 },
   { id:'resistance', cat:'electrical', name:'Resistencia', short:'R', unit:'Ω', aliases:['resistencia','resistance','resistenza','rz','r/h'], min:100, max:1800 },
   { id:'reactance', cat:'electrical', name:'Reactancia', short:'Xc', unit:'Ω', aliases:['reactancia','reactance','reattanza','xc','xc/h'], min:5, max:300 },
   { id:'phase', cat:'electrical', name:'Ángulo de fase', short:'PhA', unit:'°', aliases:['angulo de fase','phase angle','angolo di fase','angolo di fase standardizzato','pha'], min:1, max:15 },
@@ -33,6 +35,8 @@ const FIELDS = [
   { id:'asmm', cat:'muscle', name:'Masa muscular esquelética apendicular', short:'ASMM', unit:'kg', aliases:['masa muscular esqueletica apendicular','appendicular skeletal muscle mass','asmm'], min:0, max:80 },
   { id:'smi', cat:'muscle', name:'Índice muscular esquelético', short:'SMI', unit:'kg/m²', aliases:['skeletal muscle index','skeletal muscle mass index','indice muscular esqueletico','smi'], min:0, max:30 },
   { id:'asmi', cat:'muscle', name:'Índice muscular apendicular', short:'ASMI', unit:'kg/m²', aliases:['asmi','asmm index','appendicular skeletal muscle mass index','indice muscolare appendicolare'], min:0, max:25 },
+  { id:'grip_strength', cat:'muscle', name:'Dinamometría', unit:'', aliases:[], textValue:true },
+  { id:'chair_test', cat:'muscle', name:'Test silla', unit:'', aliases:[], textValue:true },
   { id:'tbw', cat:'water', name:'Agua corporal total', short:'TBW', unit:'L', aliases:['agua corporal total','total body water','acqua corporea totale','tbw'], min:3, max:140 },
   { id:'tbw_pct', cat:'water', name:'Agua corporal total', short:'TBW', unit:'%', aliases:['agua corporal total','total body water','acqua corporea totale','tbw'], min:10, max:95 },
   { id:'hydration', cat:'water', name:'Hydragram · hidratación de la masa libre de grasa', short:'Hydragram (TBW/FFM)', unit:'%', aliases:['hydragram','tbw/ffm','tbw / ffm','hidratacion','idratazione','hydration','ffm hydration'], min:40, max:100 },
@@ -52,7 +56,7 @@ const FIELDS = [
 ];
 
 const BUILTINS = [
-  { id:'general', name:'Valoración general', description:'Resumen equilibrado de la evaluación bioimpedanciométrica.', fields:['weight','height','bmi','resistance','reactance','phase','fm','fm_pct','ffm','ffmi','bcm','tbw','ecw','icw','hydration'], format:'compact' },
+  { id:'general', name:'Valoración general', description:'Resumen equilibrado de la evaluación bioimpedanciométrica.', fields:['weight','usual_weight','weight_loss_pct','height','bmi','calf','resistance','reactance','phase','fm','fm_pct','ffm','ffmi','bcm','grip_strength','chair_test','tbw','ecw','icw','hydration'], format:'compact' },
   { id:'nutrition', name:'Nutrición clínica', description:'Composición corporal, reserva celular e hidratación para consulta nutricional.', fields:['weight','bmi','phase','fm','fm_pct','ffm','ffmi','fmi','bcm','bcmi','tbw','ecw','icw','ecw_tbw','hydration'], format:'sections' },
   { id:'sarcopenia', name:'Sarcopenia y músculo', description:'Indicadores musculares y bioeléctricos útiles en valoración morfofuncional.', fields:['weight','bmi','calf','phase','spa','ffm','ffmi','mm','smm','smi','asmi','bcm','bcmi'], format:'compact' },
   { id:'hydration', name:'Hidratación y BIVA', description:'Parámetros eléctricos y de compartimentos hídricos.', fields:['resistance','reactance','phase','spa','tbw','tbw_pct','hydration','ecw','ecw_pct','icw','icw_pct','ecw_tbw','oh'], format:'sections' },
@@ -87,6 +91,11 @@ function readOverrides(){
 function persistTemplates(){try{localStorage.setItem(STORE_KEY,JSON.stringify(state.custom));return true;}catch{return false;}}
 function persistOverrides(){try{localStorage.setItem(OVERRIDES_KEY,JSON.stringify(state.overrides));return true;}catch{return false;}}
 function formatDecimal(input){return String(input).trim().replace(/\s/g,'').replace(/\.(?=\d{3}(?:[.,]|$))/g,'').replace('.',',');}
+function formatFieldValue(field,value){
+  if(field.textValue)return String(value).trim();
+  if(['usual_weight','weight_loss_pct'].includes(field.id))return String(value).trim().replace('.',',');
+  return formatDecimal(value);
+}
 function toast(message){const el=$('toast');el.textContent=message;el.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.classList.remove('show'),3500);}
 function showView(id){document.querySelectorAll('.view').forEach(el=>el.classList.toggle('active-view',el.id===id+'View'));document.querySelectorAll('[data-view]').forEach(el=>el.classList.toggle('active',el.dataset.view===id));$('breadcrumbTitle').textContent={workspace:'Conversor PDF',templates:'Mis plantillas',guide:'Cómo funciona'}[id];window.scrollTo({top:0,behavior:'smooth'});if(id==='templates')renderTemplates();}
 function showStatus(message,kind='neutral'){$('processStatus').className='status-note'+(kind==='neutral'?'':' '+kind);$('processStatus').querySelector('span:last-child').textContent=message;}
@@ -99,7 +108,7 @@ function renderFields(){
   for(const category of CATEGORIES){const fields=FIELDS.filter(f=>f.cat===category.id&&(f.name.toLocaleLowerCase('es').includes(search)||(f.short||'').toLowerCase().includes(search)));
     if(!fields.length)continue;
     html+=`<div class="field-group"><div class="field-group-header"><h3>${category.name}</h3><span>${fields.filter(f=>state.values[f.id]!=null&&state.values[f.id]!=='').length} con valor</span></div>`;
-    for(const f of fields){const v=state.values[f.id]??'';html+=`<div class="field-row ${v===''?'not-found':''}"><input class="field-check" type="checkbox" data-field-check="${f.id}" ${state.selected.has(f.id)?'checked':''} aria-label="Seleccionar ${escapeHtml(f.name)} ${escapeHtml(displayUnit(f))}"/><label class="field-name" for="value-${f.id}">${escapeHtml(f.name)}${f.short?`<small>${escapeHtml(f.short)}${f.id==='bcm'?' · en HC: BCM/h':''}</small>`:''}</label><input class="field-value" id="value-${f.id}" data-field-value="${f.id}" value="${escapeHtml(v)}" placeholder="—" inputmode="decimal" aria-label="Valor de ${escapeHtml(f.name)} en ${escapeHtml(displayUnit(f))}"/><span class="field-unit">${escapeHtml(displayUnit(f))}</span></div>`;}
+    for(const f of fields){const v=state.values[f.id]??'';html+=`<div class="field-row ${v===''?'not-found':''}"><input class="field-check" type="checkbox" data-field-check="${f.id}" ${state.selected.has(f.id)?'checked':''} aria-label="Seleccionar ${escapeHtml(f.name)} ${escapeHtml(displayUnit(f))}"/><label class="field-name" for="value-${f.id}">${escapeHtml(f.name)}${f.short?`<small>${escapeHtml(f.short)}${f.id==='bcm'?' · en HC: BCM/h':''}</small>`:''}</label><input class="field-value" id="value-${f.id}" data-field-value="${f.id}" value="${escapeHtml(v)}" placeholder="—" inputmode="${f.textValue?'text':'decimal'}" aria-label="Valor de ${escapeHtml(f.name)}${f.unit?' en '+escapeHtml(displayUnit(f)):''}"/><span class="field-unit">${escapeHtml(displayUnit(f))}</span></div>`;}
     html+='</div>';
   }
   $('fieldsContainer').innerHTML=html||'<p class="status-note">No hay parámetros con ese nombre.</p>';
@@ -128,7 +137,7 @@ function referenceFor(id,sex){
   }
 }
 function humanField(f,v,values=state.values,derived=state.derivedFields){
-  const converted=f.id==='bcm'?bcmByHeight(values):formatDecimal(v);
+  const converted=f.id==='bcm'?bcmByHeight(values):formatFieldValue(f,v);
   if(converted===null)return null;
   const label=f.id==='bcm'?'BCM/h':(f.short||f.name)+(derived.has(f.id)?' (calculado)':'');
   const unit=f.id==='bcm'?'kg/m':f.unit==='Ω'?'ohmios':f.unit;
@@ -145,7 +154,7 @@ function sortedMeasurements(){return [...state.measurements].sort((a,b)=>measure
 function hasValue(values,id){return values[id]!==undefined&&values[id]!==null&&String(values[id]).trim()!=='';}
 function measurementValue(f,record){
   if(!hasValue(record.values,f.id))return null;
-  return f.id==='bcm'?bcmByHeight(record.values):formatDecimal(record.values[f.id]);
+  return f.id==='bcm'?bcmByHeight(record.values):formatFieldValue(f,record.values[f.id]);
 }
 function evolutionField(f){
   const records=sortedMeasurements().filter(r=>hasValue(r.values,f.id));
@@ -293,13 +302,65 @@ function chooseNumeric(f, line, aliasEnd, nextLine=''){
   pool.sort((a,b)=>b.score-a.score);
   return {value:f.id==='height'&&pool[0].num<3?formatDecimal(String(Math.round(pool[0].num*100))):formatDecimal(pool[0].raw),score:pool[0].score};
 }
+const COMMENT_LABEL = /(?<![\p{L}\p{N}%])(?:(?<usual_weight>peso\s+habitual(?:\s*\(kg\))?)|(?<weight_loss_pct>%\s*pp(?:\s*\(p[eé]rdida de peso\))?|p[eé]rdida de peso(?:\s*\(%\))?)|(?<calf>cp(?:\s*\(circunferencia(?: de)? pantorrilla\))?|circunferencia(?: de)? pantorrilla)|(?<grip_strength>dinamometr[ií]a)|(?<chair_test>test\s+(?:(?:de\s+)?la\s+|de\s+)?silla))(?=\s|[:=;|]|$)/giu;
+const COMMENT_UNITS = {usual_weight:/^kg$/i,weight_loss_pct:/^%$/,calf:/^cm$/i};
+
+function commentValue(id,label,raw){
+  const value=raw.replace(/^\s*(?:[:=]\s*|-\s+)?/,'').replace(/[;|,/\s]+$/,'').trim();
+  const field=fieldById(id);
+  if(field.textValue){
+    // Results can include both hands, seconds, or a repetition count.
+    const startsWithResult=/^(?:[+−-]?\d|(?:mano\s+)?(?:derecha|izquierda|d|i|der|izq)\b|no\s+(?:realizad[oa]|valorable)\b)/i;
+    return value&&(startsWithResult.test(value)||/^\s*[:=]/.test(raw))?value.slice(0,160):null;
+  }
+  const match=value.match(/^([+−-]?\d{1,4}(?:[.,]\d{1,3})?)\s*(kg|cm|%)?\.?$/i);
+  if(!match)return null;
+  const [,number,unit]=match;
+  if(unit&&!COMMENT_UNITS[id].test(unit))return null;
+  if(id==='weight_loss_pct'&&!unit&&!label.includes('%'))return null;
+  const decimal=number.replace('−','-').replace('.',',');
+  return plausible(field,Number(decimal.replace(',','.')))?decimal:null;
+}
+
+function extractCommentMeasurements(text){
+  const lines=text.replace(/\f/g,'\n\f\n').split(/\r\n?|\n/)
+    .map(line=>line==='\f'?line:line.replace(/\s+/g,' ').trim()).filter(Boolean);
+  const reportLines=[...lines];
+  const values={},conflicts=new Set();
+  for(let i=0;i<lines.length;i++){
+    const heading=/\bcomentarios?\s*:\s*|^comentarios?\s+/i.exec(lines[i]);
+    const offset=heading?heading.index+heading[0].length:0;
+    const line=lines[i].slice(offset).replace(/^(?:[•*–-]\s*)+/,'');
+    const labels=[...line.matchAll(COMMENT_LABEL)];
+    if(labels[0]?.index!==0)continue;
+    reportLines[i]=heading?lines[i].slice(0,heading.index).trim():'';
+    for(const [position,label] of labels.entries()){
+      const id=Object.keys(label.groups).find(key=>label.groups[key]!==undefined);
+      const end=labels[position+1]?.index??line.length;
+      let raw=line.slice(label.index+label[0].length,end);
+      if(position===labels.length-1&&/^\s*[:=]?\s*$/.test(raw)&&/^\s*[+−-]?\d/.test(lines[i+1]||'')){
+        raw=lines[i+1];
+        reportLines[i+1]='';
+      }
+      const value=commentValue(id,label[0],raw);
+      if(value===null||conflicts.has(id))continue;
+      if(values[id]!==undefined&&values[id]!==value){
+        delete values[id];
+        conflicts.add(id);
+      }else values[id]=value;
+    }
+  }
+  return {values,reportLines};
+}
+
 function parseReport(text){
-  const lines=text.replace(/\r/g,'\n').split(/\n/).map(x=>x.replace(/\s+/g,' ').trim()).filter(Boolean);
+  const {values:comments,reportLines:lines}=extractCommentMeasurements(text);
   const normalized=lines.map(norm);const found={};let ranking={};
   for(const f of FIELDS){
     const aliases=[...f.aliases].sort((a,b)=>b.length-a.length);
     for(let i=0;i<lines.length;i++){
       const line=normalized[i];if(line.length>160)continue;
+      if(f.id==='weight'&&/\bpeso habitual\b/.test(line))continue;
       // A ratio label contains both component acronyms, but is not a TBW/ECW
       // measurement. Misattributing it would yield a clinically misleading %.
       if(['tbw','tbw_pct','ecw','ecw_pct'].includes(f.id)&&/ecw\s*\/\s*tbw/.test(line))continue;
@@ -319,7 +380,7 @@ function parseReport(text){
   }
   // If a report says ECW/TBW as a fraction (0.38), express it consistently as % only when explicit.
   if(found.ecw_tbw&&parseFloat(found.ecw_tbw.replace(',','.'))<1){found.ecw_tbw=(parseFloat(found.ecw_tbw.replace(',','.'))*100).toFixed(1).replace('.',',');}
-  return found;
+  return {...found,...comments};
 }
 
 // Bodygram HBO Evolutivo renders measurements as vector outlines instead of PDF
@@ -679,6 +740,40 @@ async function createOcrWorker(){
   const worker=await module.default.createWorker('eng',1,{workerPath:new URL('./vendor/worker.min.js',import.meta.url).href,corePath:new URL('./vendor/tess-core',import.meta.url).href,langPath:new URL('./vendor/lang',import.meta.url).href,gzip:false,workerBlobURL:false});
   await worker.setParameters({tessedit_pageseg_mode:'6'});return worker;
 }
+
+async function readPdfComments(doc,pageNumbers,existingWorker=null){
+  if(!pageNumbers.length)return {};
+  let worker=existingWorker;
+  const pages=[];
+  try{
+    worker??=await createOcrWorker();
+    // Comments can appear on different pages of the export.
+    await worker.setParameters({tessedit_pageseg_mode:'11',tessedit_char_whitelist:''});
+    for(const pageNumber of pageNumbers){
+      showStatus(`Buscando parámetros en Comentarios (${pageNumber}/${doc.numPages})…`);
+      const canvas=document.createElement('canvas');
+      try{
+        const page=await doc.getPage(pageNumber);
+        const viewport=page.getViewport({scale:2.5});
+        canvas.width=Math.ceil(viewport.width);
+        canvas.height=Math.ceil(viewport.height);
+        const canvasContext=canvas.getContext('2d',{willReadFrequently:true});
+        await page.render({canvasContext,viewport}).promise;
+        pages.push((await worker.recognize(canvas)).data.text);
+      }catch(error){
+        console.warn('No se han podido leer los comentarios de una página',error);
+      }finally{
+        canvas.width=canvas.height=0;
+      }
+    }
+  }catch(error){
+    console.warn('No se han podido leer los comentarios escaneados',error);
+  }finally{
+    if(existingWorker)await existingWorker.setParameters({tessedit_pageseg_mode:'6'}).catch(()=>{});
+    else if(worker)await worker.terminate().catch(()=>{});
+  }
+  return extractCommentMeasurements(pages.join('\f')).values;
+}
 function historyImage(canvas,grid,column=null,rowOnly=null){
   const scale=2,gap=20,firstRow=grid.ys[1],bandHeight=Math.ceil((grid.ys[2]-firstRow-6)*scale)+gap;
   const cols=column===null?Array.from({length:20},(_,i)=>i):[column];
@@ -777,8 +872,24 @@ async function loadPdf(file){
     const pdfjs=await getPdfLibrary();const doc=await pdfjs.getDocument({data:state.pdfBytes.slice(),useSystemFonts:true}).promise;
     const pages=Math.min(doc.numPages,12);const chunks=[];
     for(let i=1;i<=pages;i++){showStatus(`Leyendo texto de la página ${i} de ${pages}...`);const page=await doc.getPage(i);const content=await page.getTextContent();chunks.push(extractLinesFromItems(content.items));}
-    state.rawText=chunks.join('\n');let found=parseReport(state.rawText);$('fileInfo').textContent=`${doc.numPages} página${doc.numPages===1?'':'s'} · ${Object.keys(found).length} datos identificados`;
-    if(Object.keys(found).length>=3){setValues(found,'pdf');const history=await readPdfHistory(doc);installHistory(history);showStatus(history.records.length?`Evolutivo detectado automáticamente: ${history.records.length} mediciones. ${history.issues.length?(history.issues.length===1?'1 valor dudoso omitido. ':history.issues.length+' valores dudosos omitidos. '):''}Revisa los datos antes de copiarlos.`:`Texto extraído. Se han identificado ${Object.keys(found).length} parámetros. Comprueba que coinciden con el informe.`, 'success');}
+    state.rawText=chunks.join('\f');
+    let found=parseReport(state.rawText);
+    const textComments=extractCommentMeasurements(state.rawText).values;
+    const reportCount=Object.keys(found).filter(id=>!(id in textComments)).length;
+    $('fileInfo').textContent=`${doc.numPages} página${doc.numPages===1?'':'s'} · ${Object.keys(found).length} datos identificados`;
+    if(reportCount>=3){
+      const scannedPages=chunks.flatMap((chunk,i)=>{
+        const missingComments=/\bcomentarios?\b/i.test(chunk)&&!Object.keys(extractCommentMeasurements(chunk).values).length;
+        return !chunk.trim()||missingComments?[i+1]:[];
+      });
+      const scannedComments=await readPdfComments(doc,scannedPages);
+      found={...found,...scannedComments,...textComments};
+      setValues(found,'pdf');
+      $('fileInfo').textContent=`${doc.numPages} página${doc.numPages===1?'':'s'} · ${Object.keys(found).length} datos identificados`;
+      const history=await readPdfHistory(doc);
+      installHistory(history);
+      showStatus(history.records.length?`Evolutivo detectado automáticamente: ${history.records.length} mediciones. ${history.issues.length?(history.issues.length===1?'1 valor dudoso omitido. ':history.issues.length+' valores dudosos omitidos. '):''}Revisa los datos antes de copiarlos.`:`Texto extraído. Se han identificado ${Object.keys(found).length} parámetros. Comprueba que coinciden con el informe.`, 'success');
+    }
     else{setValues(found,'pdf');showStatus('No se han localizado suficientes parámetros en el texto. Iniciando OCR local...');await runOcr(doc,true);}
   }catch(err){console.error('Error leyendo PDF',err);showStatus(`No se ha podido procesar este PDF (${err.message||'error de lectura'}). Prueba con otro informe.`, 'error');}
   finally{setBusy(false);renderPreview();}
@@ -793,10 +904,14 @@ async function runOcr(existingDoc=null,automatic=false){
     const specialized=await recognizeBodygram(doc,worker);
     if(specialized){
       if(specialized.sex){state.sex=specialized.sex;$('sexSelect').value=state.sex;}
-      setValues(specialized.values,'ocr-bodygram',{derived:specialized.derived});
+      const pageNumbers=Array.from({length:Math.min(doc.numPages,12)},(_,i)=>i+1);
+      const comments=await readPdfComments(doc,pageNumbers,worker);
+      const textComments=extractCommentMeasurements(state.rawText).values;
+      const values={...specialized.values,...comments,...textComments};
+      setValues(values,'ocr-bodygram',{derived:specialized.derived});
       const history=await readPdfHistory(doc,worker);installHistory(history);
       const count=Object.keys(specialized.values).length;
-      $('fileInfo').textContent=`${doc.numPages} páginas · ${count} parámetros leídos en las columnas «resultado»`;
+      $('fileInfo').textContent=`${doc.numPages} páginas · ${Object.keys(values).length} datos identificados`;
       const issueNames=specialized.needsReview.map(id=>fieldById(id)?.short||fieldById(id)?.name||id);
       const derivedNote=specialized.derived.length?' La relación ECW/TBW está señalada como calculada.':'';
       showStatus(history.records.length?`Evolutivo detectado automáticamente: ${history.records.length} mediciones. ${history.issues.length?(history.issues.length===1?'1 valor dudoso omitido. ':history.issues.length+' valores dudosos omitidos. '):''}Comprueba los valores y las unidades con el PDF antes de copiar.`:issueNames.length
@@ -807,7 +922,7 @@ async function runOcr(existingDoc=null,automatic=false){
     }
     await worker.setParameters({tessedit_pageseg_mode:'3'});
     const pages=Math.min(doc.numPages,12);let text='';
-    for(let i=1;i<=pages;i++){showStatus(`Aplicando OCR a la página ${i} de ${pages}...`);const page=await doc.getPage(i);const viewport=page.getViewport({scale:2.0});const canvas=document.createElement('canvas');canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);await page.render({canvasContext:canvas.getContext('2d',{willReadFrequently:true}),viewport}).promise;const result=await worker.recognize(canvas);text+='\n'+result.data.text;canvas.width=canvas.height=0;}
+    for(let i=1;i<=pages;i++){showStatus(`Aplicando OCR a la página ${i} de ${pages}...`);const page=await doc.getPage(i);const viewport=page.getViewport({scale:2.0});const canvas=document.createElement('canvas');canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);await page.render({canvasContext:canvas.getContext('2d',{willReadFrequently:true}),viewport}).promise;const result=await worker.recognize(canvas);text+='\f'+result.data.text;canvas.width=canvas.height=0;}
     state.rawText+=(state.rawText?'\n':'')+text;const found=parseReport(state.rawText);setValues(found,'ocr');const history=await readPdfHistory(doc,worker);installHistory(history);$('fileInfo').textContent=`${doc.numPages} página${doc.numPages===1?'':'s'} · ${Object.keys(found).length} datos identificados (OCR)`;
     showStatus(history.records.length?`Evolutivo detectado automáticamente: ${history.records.length} mediciones. Revisa los datos antes de copiar.`:Object.keys(found).length?`OCR terminado: ${Object.keys(found).length} valores candidatos. Es imprescindible revisarlos y corregirlos si procede.`:'El OCR ha finalizado, pero no ha identificado campos con suficiente seguridad. Puedes introducir los valores manualmente.',Object.keys(found).length?'success':'error');
   }catch(err){state.historyStatus='unreadable';console.error('Error OCR',err);showStatus(`No se ha podido completar el OCR local (${err.message||'error'}). Puedes introducir los datos manualmente.`, 'error');if(!automatic)toast('Error al ejecutar OCR.');}
@@ -840,7 +955,7 @@ $('sexSelect').addEventListener('change',e=>{state.sex=e.target.value;resetVerif
 $('templateSelect').addEventListener('change',e=>applyTemplate(e.target.value));
 $('fieldSearch').addEventListener('input',renderFields);
 $('fieldsContainer').addEventListener('change',e=>{const id=e.target.dataset.fieldCheck;if(!id)return;if(e.target.checked)state.selected.add(id);else state.selected.delete(id);resetVerification();renderFields();renderPreview();});
-$('fieldsContainer').addEventListener('input',e=>{const id=e.target.dataset.fieldValue;if(!id)return;const raw=e.target.value.replace(/[^\d,\.\-+]/g,'').slice(0,20);if(raw)state.values[id]=raw;else delete state.values[id];if(!state.editingMeasurementId&&Object.keys(state.historyReportValues).length){if(raw)state.historyReportValues[id]=raw;else delete state.historyReportValues[id];}resetVerification();$('detectedBadge').textContent=`${Object.values(state.values).filter(Boolean).length} detectados`;$('selectionCount').textContent=`${state.selected.size} seleccionados`;renderPreview();});
+$('fieldsContainer').addEventListener('input',e=>{const id=e.target.dataset.fieldValue;if(!id)return;const field=fieldById(id);const raw=field?.textValue?e.target.value.slice(0,160):e.target.value.replace(/[^\d,\.\-+]/g,'').slice(0,20);if(raw)state.values[id]=raw;else delete state.values[id];if(!state.editingMeasurementId&&Object.keys(state.historyReportValues).length){if(raw)state.historyReportValues[id]=raw;else delete state.historyReportValues[id];}resetVerification();$('detectedBadge').textContent=`${Object.values(state.values).filter(Boolean).length} detectados`;$('selectionCount').textContent=`${state.selected.size} seleccionados`;renderPreview();});
 $('selectDetected').addEventListener('click',()=>{const records=state.noteMode==='evolution'?state.measurements:[{values:state.values}];state.selected=new Set(records.flatMap(r=>Object.keys(r.values).filter(id=>hasValue(r.values,id))));resetVerification();renderFields();renderPreview();});
 $('clearSelected').addEventListener('click',()=>{state.selected.clear();resetVerification();renderFields();renderPreview();});
 $('verifiedCheck').addEventListener('change',e=>{state.verified=e.target.checked;renderPreview();});
