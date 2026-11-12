@@ -655,15 +655,37 @@ function detectHistoryGrid({data,width,height}){
     let hits=0;for(let x=left;x<right;x+=2)if(grey((y*width+x)*4))hits++;
     if(hits>(right-left)/2*.70)lines.push(y);
   }
-  const ys=collapsePositions(lines);if(ys.length<3||ys.length>35)return null;
-  const bottom=ys.at(-1),columns=[];
+  const rules=collapsePositions(lines);
+  if(rules.length<3)return null;
+  // Locate the columns in the header and first row, before any notes below.
+  const firstBottom=rules[2],columns=[];
   for(let x=left;x<right;x++){
-    let hits=0;for(let y=top+2;y<bottom;y+=2)if(grey((y*width+x)*4))hits++;
-    if(hits>(bottom-top)/2*.70)columns.push(x);
+    let hits=0;
+    for(let y=rules[0]+2;y<firstBottom;y+=2)if(grey((y*width+x)*4))hits++;
+    if(hits>(firstBottom-rules[0])/2*.70)columns.push(x);
   }
-  const xs=collapsePositions(columns);if(xs.length!==21)return null;
-  const heights=ys.slice(2).map((y,i)=>y-ys[i+1]);
-  if(heights.some(h=>h<height*.008||Math.abs(h-heights[0])>Math.max(4,heights[0]*.15)))return null;
+  const xs=collapsePositions(columns);
+  if(xs.length!==21)return null;
+  const rowHeight=firstBottom-rules[1];
+  const ys=rules.slice(0,2);
+  for(const bottom of rules.slice(2)){
+    const rowTop=ys.at(-1);
+    const rowHasColumns=xs.every(x=>{
+      let hits=0,samples=0;
+      for(let y=rowTop+3;y<bottom-2;y+=2){
+        samples++;
+        const pixel=(y*width+x)*4;
+        if(grey(pixel-4)||grey(pixel)||grey(pixel+4))hits++;
+      }
+      return samples>0&&hits/samples>.70;
+    });
+    // The horizontal border of the comments box has no historical columns.
+    if(!rowHasColumns)break;
+    const h=bottom-rowTop;
+    if(h<height*.008||Math.abs(h-rowHeight)>Math.max(4,rowHeight*.15))return null;
+    ys.push(bottom);
+  }
+  if(ys.length<3||ys.length>35)return null;
   return {xs,ys,rowCount:ys.length-2,headerTop:ys[0],headerBottom:ys[1]};
 }
 function tsvCells(tsv,xs,bandHeight,rowCount){
