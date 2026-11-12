@@ -104,3 +104,19 @@ run('state.busy=false;renderPreview()');
 assert.match(el('previewContent').textContent,/SMI: 7,5 --> 8/);
 console.log('Processing progress stays visible until the evolution is ready');
 
+run(`
+  state.values=parseReport('Peso: 68 kg\\nComentarios:\\nPeso habitual: 72 kg\\n%PP: 5,6 %\\nCP: 34 cm\\nDinamometría: 24 kg\\nTest silla: 12,8 s');
+  state.selected=new Set(BUILTINS[0].fields);
+  state.includeCutoffs=false;state.format='compact';
+  installHistory({records:[{date:'2026-05-04',time:'09:15',values:{weight:'70'},derived:[]},{date:'2026-06-04',time:'09:15',values:{weight:'68'},derived:[]}],issues:[]});
+  state.verified=true;renderPreview();
+`);
+el('copyButton').listeners.click();
+assert.match(copied,/Peso: 70 --> 68 kg/);
+assert.match(copied,/Peso habitual: 72 kg\n%PP: 5,6 %\nCP: 34 cm/);
+assert.match(copied,/Dinamometría: 24 kg\nTest silla: 12,8 s/);
+assert.ok(run('state.measurements.every(record=>record.values.chair_test===undefined)'), 'current comments cannot be assigned to previous visits');
+el('fieldsContainer').listeners.input({target:{dataset:{fieldValue:'chair_test'},value:'9 repeticiones en 30 s'}});
+assert.match(run('buildText()'),/Test silla: 9 repeticiones en 30 s/);
+console.log('Comments are editable and copy once beside the historical measurements');
+

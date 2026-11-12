@@ -31,7 +31,7 @@ assert.equal(run("historyNumber('ffmi',['',''],17.3)"),null,'a relationship must
 run("state.values={ecw:'14',spa:'-0.4',height:'170'};state.selected=new Set(['ecw','spa']);state.includeCutoffs=false;installHistory(result)");
 assert.equal(run('state.noteMode'),'evolution','import must select evolution without any manual add');
 assert.equal(run('state.selected.has("smi")'),true,'historical parameters must be included initially');
-assert.match(run('buildText()'),/SMI: 7 → 7,5 → 8 kg\/m²/);
+assert.match(run('buildText()'),/SMI: 7 --> 7,5 --> 8 kg\/m²/);
 assert.match(run('buildText()'),/ECW: 14 L/,'parameters present only in the current report remain single values');
 run("state.values={smi:'7.5'}");
 assert.match(run('buildText()'),/ECW: 14 L/,'editing a historical visit must retain current-only data');

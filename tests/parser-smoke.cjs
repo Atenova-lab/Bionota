@@ -140,3 +140,23 @@ const signUncertain=context.parseBodygramCrops({
 assert.equal(signUncertain.values.oh,undefined,'single unsigned reading of OH must remain unfilled');
 assert.ok(signUncertain.needsReview.includes('oh'));
 console.log('Signed hydration OCR regression checks passed');
+
+const comments='Comentarios: PESO HABITUAL: 72.5 kg; %PP (Pérdida de peso): -5,6 % / CP: 34 cm\n'
+  +'DINAMOMETRÍA: D 24,5 kg / I 22 kg\nTEST SILLA: 8 repeticiones en 30 s';
+const withComments=context.parseReport(text+'\n'+comments);
+assert.equal(withComments.weight,'68,4','usual weight must never overwrite the measured weight');
+assert.equal(withComments.usual_weight,'72,5');
+assert.equal(withComments.weight_loss_pct,'-5,6');
+assert.equal(withComments.calf,'34');
+assert.equal(withComments.grip_strength,'D 24,5 kg / I 22 kg');
+assert.equal(withComments.chair_test,'8 repeticiones en 30 s');
+assert.equal(context.parseReport('PESO HABITUAL:\n\n72.5 kg').usual_weight,'72,5','OCR can wrap the number onto another line');
+assert.equal(context.parseReport('Peso habitual:\f72 kg').usual_weight,undefined,'a value cannot come from a different page');
+assert.equal(context.parseReport('PESO HABITUAL: 72 kg').weight,undefined);
+assert.equal(context.parseReport('Pérdida de peso: 5 kg').weight_loss_pct,undefined,'kg cannot be interpreted as percent');
+assert.equal(context.parseReport('Pérdida de peso: 5 %').weight_loss_pct,'5');
+assert.equal(context.parseReport('CP: 34 cm\nCP: 38 cm').calf,undefined,'conflicting values must stay blank');
+for(const id of ['usual_weight','weight_loss_pct','calf','grip_strength','chair_test']){
+  assert.equal(parsed[id],undefined,'older reports must leave absent comments blank');
+}
+console.log('Optional comments, decimal values, units, wrapped OCR and older reports passed');
