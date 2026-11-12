@@ -2,7 +2,7 @@
 <html lang="es">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Actualizar BioNota</title>
 <style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#eef5f8;color:#183b4e;font:17px/1.6 system-ui,sans-serif}main{max-width:480px;margin:24px;padding:32px;background:white;border-radius:24px;box-shadow:0 16px 48px #183b4e18}h1{line-height:1.2}button{font:inherit;background:#187da8;color:white;border:0;border-radius:12px;padding:12px 20px;cursor:pointer}button:disabled{opacity:.6}a{color:#187da8}#status{min-height:3em}</style></head>
-<body><main><p>BioNota · versión 1.10</p><h1>Actualiza sin reinstalar</h1><p>Esta versión lee los parámetros añadidos en Comentarios de los informes Bodygram.</p><p>Termina tu nota y cierra las otras ventanas de BioNota antes de continuar. Tus plantillas se conservan; el PDF tendrás que cargarlo de nuevo.</p><button id="update" type="button">Actualizar y abrir BioNota</button><p id="status" role="status" aria-live="polite">Necesitas conexión a internet.</p><a href="./">Volver a BioNota</a></main>
+<body><main><p>BioNota · versión 1.11</p><h1>Actualiza sin reinstalar</h1><p>Esta versión corrige la detección del evolutivo cuando hay comentarios debajo de la tabla.</p><p>Termina tu nota y cierra las otras ventanas de BioNota antes de continuar. Tus plantillas se conservan; el PDF tendrás que cargarlo de nuevo.</p><button id="update" type="button">Actualizar y abrir BioNota</button><p id="status" role="status" aria-live="polite">Necesitas conexión a internet.</p><a href="./">Volver a BioNota</a></main>
 <script>
 const button=document.getElementById('update'),status=document.getElementById('status');
 button.addEventListener('click',async()=>{
@@ -11,7 +11,7 @@ button.addEventListener('click',async()=>{
     const base=new URL('./',location.href),target=new URL('index.html',base);
     target.searchParams.set('actualizar',Date.now());
     const response=await fetch(target,{cache:'no-store'});
-    if(!response.ok||!/<meta name="bionota-version" content="1\.10"/.test(await response.text()))throw new Error('La última versión aún no está disponible. Inténtalo de nuevo en unos instantes.');
+    if(!response.ok||!/<meta name="bionota-version" content="1\.11"/.test(await response.text()))throw new Error('La última versión aún no está disponible. Inténtalo de nuevo en unos instantes.');
     status.textContent='Actualizando BioNota…';
     if('serviceWorker' in navigator){
       const registrations=await navigator.serviceWorker.getRegistrations();
@@ -21,7 +21,7 @@ button.addEventListener('click',async()=>{
       const names=await caches.keys();
       await Promise.all(names.filter(name=>name.startsWith('bionota-static-')).map(name=>caches.delete(name)));
     }
-    base.searchParams.set('version','1.10');base.searchParams.set('actualizar',Date.now());
+    base.searchParams.set('version','1.11');base.searchParams.set('actualizar',Date.now());
     location.replace(base.href);
   }catch(error){status.textContent=error.message||'No se ha podido actualizar. Comprueba tu conexión e inténtalo de nuevo.';button.disabled=false;}
 });

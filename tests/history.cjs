@@ -52,6 +52,8 @@ this.grid=detectHistoryGrid({data,width,height});
 `);
 assert.equal(run('grid.rowCount'),3);
 assert.equal(run('grid.xs.length'),21);
+run('for(const y of [1150,1243])for(let x=50;x<=950;x++)pixel(x,y,220,225,230)');
+assert.equal(run('detectHistoryGrid({data,width,height}).rowCount'),3,'horizontal borders below the table must not become visits');
 run('for(let y=826;y<1100;y++)pixel(95,y,255,255,255)');
 assert.equal(run('detectHistoryGrid({data,width,height})'),null);
 console.log('Automatic history: timestamps, sparse columns, OCR conflicts, printed-decimal recovery, default evolution, current-only data and grid geometry passed');

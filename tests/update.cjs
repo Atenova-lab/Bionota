@@ -44,7 +44,7 @@ const root=path.join(__dirname,'../dist');
   const removed=[],unregistered=[];let destination;
   const recovery={URL,Date,Promise,Error,document:{getElementById:id=>id==='update'?button:status},
     location:{href:scope+'actualizar.html',replace:url=>{destination=url;}},window:{caches:{}},
-    fetch:async()=>({ok:true,text:async()=>'<meta name="bionota-version" content="1.10" />'}),
+    fetch:async()=>({ok:true,text:async()=>'<meta name="bionota-version" content="1.11" />'}),
     navigator:{serviceWorker:{getRegistrations:async()=>[
       {scope,unregister:async()=>{unregistered.push(scope);}},
       {scope:'https://atenova-lab.github.io/ENDOTURNOS-WEB/',unregister:async()=>{throw Error('unrelated app touched');}},
@@ -52,7 +52,7 @@ const root=path.join(__dirname,'../dist');
   };
   vm.runInNewContext(script,recovery);await button.click();
   assert.deepEqual(unregistered,[scope]);assert.deepEqual(removed,['bionota-static-old','bionota-static-new']);
-  assert.equal(new URL(destination).pathname,'/Bionota/');assert.equal(new URL(destination).searchParams.get('version'),'1.10');
+  assert.equal(new URL(destination).pathname,'/Bionota/');assert.equal(new URL(destination).searchParams.get('version'),'1.11');
   assert.doesNotMatch(script,/localStorage|indexedDB/,'saved templates must remain untouched');
   removed.length=0;unregistered.length=0;destination=undefined;
   recovery.fetch=async()=>{throw Error('offline');};
