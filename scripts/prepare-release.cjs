@@ -23,7 +23,11 @@ for(const [source,name] of Object.entries(assets)){
   html=html.replace(new RegExp(`\\./${stem}(?:\\.[a-f0-9]{12})?\\.${extension}`,'g'),'./'+name);
 }
 fs.writeFileSync(htmlFile,html);
-const releaseId=crypto.createHash('sha256').update(JSON.stringify(assets)).digest('hex').slice(0,12);
+// Use a new URL so installed clients do not read the old manifest from cache.
+const manifest=fs.readFileSync(path.join(dist,'manifest.webmanifest'));
+fs.writeFileSync(path.join(dist,'bionota.webmanifest'),manifest);
+const releaseId=crypto.createHash('sha256').update(JSON.stringify(assets))
+  .update(html).update(manifest).digest('hex').slice(0,12);
 const swFile=path.join(dist,'sw.js');
 let sw=fs.readFileSync(swFile,'utf8');
 sw=sw.replace(/const CACHE_NAME = '[^']+';/,`const CACHE_NAME = 'bionota-static-v8-${releaseId}';`);
