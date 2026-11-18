@@ -14,7 +14,8 @@ this.row=(date,smi,overrides={})=>{
  const values={height:'170',weight:'70',bmi:'24.2',resistance:'520',reactance:'55',phase:'6.1',hydration:'73',nutrigram:'800',bmr:'1500',ffm:'50',fm:'20',tbw:'36.5',ffmi:'17.3',fmi:'6.9',bcm:'25',smi:String(smi),smm_janssen:String((smi*1.7*1.7).toFixed(1)),na_k:'0.9',...overrides};
  return {index:0,dateRaws:[date,date],cells:HISTORY_COLUMNS.map(id=>[values[id],values[id]])};
 };
-this.rows=[row('04/05/2026 17:45',8),row('04/05/2026 09:15',7.5),row('02/01/2025 12:00',7,{reactance:'',phase:''})];
+this.rows=[row('04/05/2026 17:45',8),row('04/05/20269:15',7.5),row('02/01/2025 12:00',7,{reactance:'',phase:''})];
+rows[1].dateRaws.push('04/05/2026 09:15');
 this.result=parseHistoryRows(rows);
 `);
 assert.equal(run('result.records.length'),3,'same-day measurements at different times must both survive');
