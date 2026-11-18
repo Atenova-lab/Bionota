@@ -582,8 +582,10 @@ function parseBodygramCrops({header='',composition='',results='',indices='',extr
 const HISTORY_COLUMNS=['height','weight','bmi','resistance','reactance','phase','hydration','nutrigram','bmr','ffm','fm','tbw','ffmi','fmi','bcm','smi','smm_janssen','na_k'];
 function measurementStamp(record){return record.date+'T'+(record.time||'00:00');}
 function historyDate(raw){
-  const m=String(raw||'').replace(/\s/g,'').match(/^(\d{2})[/.\-](\d{2})[/.\-](\d{4})(?:(\d{2})[:.](\d{2}))?$/);
-  if(!m)return null;const date=`${m[3]}-${m[2]}-${m[1]}`,time=m[4]?`${m[4]}:${m[5]}`:'';
+  const m=String(raw||'').replace(/\s/g,'').match(/^(\d{2})[/.\-](\d{2})[/.\-](\d{4})(?:(\d{1,2})[:.](\d{2}))?$/);
+  if(!m)return null;
+  const date=`${m[3]}-${m[2]}-${m[1]}`;
+  const time=m[4]?`${m[4].padStart(2,'0')}:${m[5]}`:'';
   return validMeasurementDate(date)&&(!time||(+m[4]<24&&+m[5]<60))?{date,time}:null;
 }
 function historyRaw(raw){

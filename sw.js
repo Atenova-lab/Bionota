@@ -1,7 +1,7 @@
 /* BioNota offline shell: only application assets, never patient PDFs or values. */
-const CACHE_NAME = 'bionota-static-v8-d1df6bc2360a';
+const CACHE_NAME = 'bionota-static-v8-c6dd2a1b682d';
 const OCR_CACHE_NAME = 'bionota-ocr-v1';
-const RELEASE_ASSETS = ["./app.6f50abb9e6b4.js","./styles.0bcaf4c8274a.css","./glass.548b35cd79ba.css"];
+const RELEASE_ASSETS = ["./app.03d17d1fe07c.js","./styles.0bcaf4c8274a.css","./glass.548b35cd79ba.css"];
 const BASE_ASSETS = [
   ...RELEASE_ASSETS, './', './index.html', './styles.css', './glass.css', './fonts/jakarta-regular.ttf', './fonts/jakarta-semibold.ttf', './fonts/jakarta-bold.ttf', './app.js', './manifest.webmanifest', './bionota.webmanifest',
   './icons/bionota-192.png', './icons/bionota-512.png',
